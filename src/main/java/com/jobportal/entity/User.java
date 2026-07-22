@@ -1,7 +1,10 @@
 package com.jobportal.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.jobportal.dto.AccountType;
+import com.jobportal.dto.UserDTO;
 
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -9,6 +12,8 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OneToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
@@ -51,17 +56,51 @@ public class User {
 
     @Column(nullable = false)
     private LocalDateTime updatedOn;
+    
+    
+    @OneToOne(cascade = CascadeType.ALL)
+    @JoinColumn(name = "profile_id")
+    @JsonIgnore
+    private Profile profile;
+    
+    
 
-    public User() {
+   
+
+	public User(Long id, String name,
+			 String email,
+			 String password,
+			 AccountType accountType, LocalDateTime createdOn,
+			LocalDateTime updatedOn, Profile profile) {
+		super();
+		this.id = id;
+		this.name = name;
+		this.email = email;
+		this.password = password;
+		this.accountType = accountType;
+		this.createdOn = createdOn;
+		this.updatedOn = updatedOn;
+		this.profile = profile;
+	}
+
+
+
+	public Profile getProfile() {
+		return profile;
+	}
+
+
+
+	public void setProfile(Profile profile) {
+		this.profile = profile;
+	}
+
+
+
+	public User() {
     }
 
-    public User(Long id, String name, String email, String password, AccountType accountType) {
-        this.id = id;
-        this.name = name;
-        this.email = email;
-        this.password = password;
-        this.accountType = accountType;
-    }
+    
 
     @PrePersist
     public void onCreate() {
@@ -130,4 +169,6 @@ public class User {
     public void setAccountType(AccountType accountType) {
         this.accountType = accountType;
     }
+    
+    
 }

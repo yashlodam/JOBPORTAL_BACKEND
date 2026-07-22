@@ -11,15 +11,27 @@ public class UserDTO {
     private String password;
     
     private AccountType accountType;
+    
+    private Long profileId;
+    
 
-    public UserDTO() {
+    public Long getProfileId() {
+		return profileId;
+	}
+
+	public void setProfileId(Long profileId) {
+		this.profileId = profileId;
+	}
+
+	public UserDTO() {
     }
 
-    public UserDTO(String name, String email, String password, AccountType accountType) {
+    public UserDTO(String name, String email, String password, AccountType accountType,Long profileId) {
         this.name = name;
         this.email = email;
         this.password = password;
         this.accountType = accountType;
+        this.profileId = profileId;
     }
 
     public String getName() {
@@ -53,4 +65,13 @@ public class UserDTO {
     public void setAccountType(AccountType accountType) {
         this.accountType = accountType;
     }
+    
+    
+    
+    
+    
+    
+    
+    
+    
 }

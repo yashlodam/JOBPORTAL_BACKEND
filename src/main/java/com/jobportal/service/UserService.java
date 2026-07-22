@@ -6,7 +6,7 @@ import com.jobportal.exception.JobPortalException;
 
 public interface UserService {
 
-	UserDTO registerUser(UserDTO userDTO);
+	UserDTO registerUser(UserDTO userDTO) throws JobPortalException;
 	UserDTO loginUser(LoginDTO loginDTO) throws JobPortalException;
 	Boolean sendOtp(String email) throws Exception;
 	Boolean verifyOtp(String email, String otp);

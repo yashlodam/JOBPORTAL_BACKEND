@@ -10,12 +10,15 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import com.jobportal.dto.LoginDTO;
+import com.jobportal.dto.ProfileDTO;
 import com.jobportal.dto.UserDTO;
 import com.jobportal.entity.Otp;
+import com.jobportal.entity.Profile;
 import com.jobportal.entity.User;
 import com.jobportal.exception.JobPortalException;
 import com.jobportal.repository.OtpRepository;
 import com.jobportal.repository.UserRepository;
+import com.jobportal.service.ProfileService;
 import com.jobportal.service.UserService;
 import com.jobportal.utility.Utilities;
 
@@ -40,25 +43,29 @@ public class UserServiceImpl implements UserService {
     @Autowired
     private OtpRepository otpRepository;
 
+   
+    
     @Override
-    public UserDTO registerUser(UserDTO userDTO) {
+    public UserDTO registerUser(UserDTO userDTO) throws JobPortalException {
 
-        // Check if email already exists
         if (userRepository.findByEmail(userDTO.getEmail()).isPresent()) {
-            throw new RuntimeException("User already exists with email: " + userDTO.getEmail());
+            throw new JobPortalException("User already exists with email: " + userDTO.getEmail());
         }
 
-        // DTO -> Entity
         User user = new User();
         user.setName(userDTO.getName());
         user.setEmail(userDTO.getEmail());
         user.setPassword(passwordEncoder.encode(userDTO.getPassword()));
         user.setAccountType(userDTO.getAccountType());
 
-        // Save user
+        Profile profile = new Profile();
+        profile.setEmail(userDTO.getEmail());
+
+        user.setProfile(profile);
+        profile.setUser(user);
+
         User savedUser = userRepository.save(user);
 
-        // Entity -> DTO
         return mapper.map(savedUser, UserDTO.class);
     }
     

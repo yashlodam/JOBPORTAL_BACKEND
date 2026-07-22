@@ -32,7 +32,7 @@ public class UserController {
 	private UserService userService;
 	
 	@PostMapping("/register")
-	public ResponseEntity<UserDTO> registerUser(@RequestBody @Valid UserDTO userDTO) {
+	public ResponseEntity<UserDTO> registerUser(@RequestBody @Valid UserDTO userDTO) throws JobPortalException {
 
 	    UserDTO savedUser = userService.registerUser(userDTO);
 
