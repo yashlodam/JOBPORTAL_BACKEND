@@ -1,5 +1,7 @@
 package com.jobportal.controller;
 
+import java.util.List;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -14,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.jobportal.dto.AboutDto;
+import com.jobportal.dto.EducationDto;
 import com.jobportal.dto.ExperienceDto;
 import com.jobportal.dto.HeaderDto;
 import com.jobportal.dto.LinksDto;
@@ -111,6 +114,55 @@ public class ProfileController {
 	            profileService.addExperience(dto, id),
 	            HttpStatus.CREATED
 	    );
+	}
+	
+	
+	@PutMapping("/experience/{experienceId}")
+	public ResponseEntity<ExperienceDto> updateExperience(
+	        @RequestBody ExperienceDto dto,
+	        @PathVariable Long experienceId) throws JobPortalException {
+
+	    return ResponseEntity.ok(
+	            profileService.updateExperience(dto, experienceId)
+	    );
+	}
+	
+	@DeleteMapping("/experience/{experienceId}")
+	public ResponseEntity<String> deleteExperience(
+	        @PathVariable Long experienceId) throws JobPortalException {
+
+	    profileService.deleteExperience(experienceId);
+
+	    return ResponseEntity.ok("Experience deleted successfully.");
+	}
+	
+	@PostMapping("/education/{id}")
+	public ResponseEntity<EducationDto> addEducation(
+	        @RequestBody EducationDto dto,
+	        @PathVariable Long id) throws JobPortalException {
+
+	    return new ResponseEntity<>(
+	            profileService.addEducation(dto, id),
+	            HttpStatus.CREATED);
+	}
+	
+	
+	@DeleteMapping("/education/{educationId}")
+	public ResponseEntity<String> deleteEducation(
+	        @PathVariable Long educationId) throws JobPortalException {
+
+	    profileService.deleteEducation(educationId);
+
+	    return ResponseEntity.ok("Education deleted successfully.");
+	}
+	
+	
+	@GetMapping("/education/{id}")
+	public ResponseEntity<List<EducationDto>> getEducation(
+	        @PathVariable Long id) throws JobPortalException {
+
+	    return ResponseEntity.ok(
+	            profileService.getEducation(id));
 	}
 	
 }

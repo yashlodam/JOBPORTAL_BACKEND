@@ -1,6 +1,10 @@
 package com.jobportal.service;
 
 
+import java.util.List;
+
+import org.jspecify.annotations.Nullable;
+
 import com.jobportal.dto.AboutDto;
 import com.jobportal.dto.EducationDto;
 import com.jobportal.dto.ExperienceDto;
@@ -32,6 +36,10 @@ public interface ProfileService {
 	ExperienceDto updateExperience(ExperienceDto dto, Long experienceId) throws JobPortalException;
 	void deleteExperience(Long experienceId) throws JobPortalException;
 	EducationDto addEducation(EducationDto dto, Long id) throws JobPortalException;
+	void deleteEducation(Long educationId) throws JobPortalException;
+	List<EducationDto> getEducation(Long id) throws JobPortalException;
+	List<ExperienceDto> getExperiences(Long id) throws JobPortalException;	
+	
     
     
 }

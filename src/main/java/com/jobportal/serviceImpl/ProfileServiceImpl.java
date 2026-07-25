@@ -253,4 +253,39 @@ public class ProfileServiceImpl implements ProfileService {
 	    return response;
 	}
 
+	@Override
+	public void deleteEducation(Long educationId) throws JobPortalException {
+
+	    Education education = educationRepository.findById(educationId)
+	            .orElseThrow(() -> new JobPortalException("Education not found"));
+
+	    educationRepository.delete(education);
+	}
+
+	@Override
+	public List<EducationDto> getEducation(Long id) throws JobPortalException {
+
+	    Profile profile = profileRepository.findById(id)
+	            .orElseThrow(() -> new JobPortalException("Profile not found"));
+
+	    List<Education> educations = educationRepository.findByProfile(profile);
+
+	    return educations.stream()
+	            .map(education -> mapper.map(education, EducationDto.class))
+	            .toList();
+	}
+
+	@Override
+	public List<ExperienceDto> getExperiences(Long id) throws JobPortalException {
+
+	    Profile profile = profileRepository.findById(id)
+	            .orElseThrow(() -> new JobPortalException("Profile not found"));
+
+	    List<Experience> experiences = experienceRepository.findByProfile(profile);
+
+	    return experiences.stream()
+	            .map(experience -> mapper.map(experience, ExperienceDto.class))
+	            .toList();
+	}
+
 }
