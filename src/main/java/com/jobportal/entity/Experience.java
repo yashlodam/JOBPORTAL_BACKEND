@@ -3,6 +3,8 @@ package com.jobportal.entity;
 import java.time.LocalDate;
 
 import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.jobportal.dto.Availability;
+import com.jobportal.dto.ExperienceType;
 
 import jakarta.persistence.*;
 
@@ -28,31 +30,48 @@ public class Experience {
 
     private String description;
 
-    private String employmentType;
+    
+    
+    @Enumerated(EnumType.STRING)
+    private ExperienceType employmentType;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "profile_id")
     @JsonBackReference
     private Profile profile;
-    public Experience() {
+    
+    
+    
+    public Experience(Long id, String title, String company, String location, LocalDate startDate, LocalDate endDate,
+			Boolean working, String description, ExperienceType employmentType, Profile profile) {
+		super();
+		this.id = id;
+		this.title = title;
+		this.company = company;
+		this.location = location;
+		this.startDate = startDate;
+		this.endDate = endDate;
+		this.working = working;
+		this.description = description;
+		this.employmentType = employmentType;
+		this.profile = profile;
+	}
+
+
+	public ExperienceType getEmploymentType() {
+		return employmentType;
+	}
+
+
+	public void setEmploymentType(ExperienceType employmentType) {
+		this.employmentType = employmentType;
+	}
+
+
+	public Experience() {
     }
 
-    public Experience(Long id, String title, String company, String location,
-                      LocalDate startDate, LocalDate endDate,
-                      Boolean working, String description,
-                      String employmentType, Profile profile) {
-        this.id = id;
-        this.title = title;
-        this.company = company;
-        this.location = location;
-        this.startDate = startDate;
-        this.endDate = endDate;
-        this.working = working;
-        this.description = description;
-        this.employmentType = employmentType;
-        this.profile = profile;
-    }
-
+   
     public Long getId() {
         return id;
     }
@@ -117,14 +136,7 @@ public class Experience {
         this.description = description;
     }
 
-    public String getEmploymentType() {
-        return employmentType;
-    }
-
-    public void setEmploymentType(String employmentType) {
-        this.employmentType = employmentType;
-    }
-
+   
     public Profile getProfile() {
         return profile;
     }

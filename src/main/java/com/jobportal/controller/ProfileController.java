@@ -3,14 +3,25 @@ package com.jobportal.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.jobportal.dto.AboutDto;
+import com.jobportal.dto.ExperienceDto;
+import com.jobportal.dto.HeaderDto;
+import com.jobportal.dto.LinksDto;
 import com.jobportal.dto.ProfileDTO;
+import com.jobportal.dto.SkillDto;
+import com.jobportal.dto.SkillsDto;
+import com.jobportal.dto.TopHeaderProfile;
+import com.jobportal.entity.Profile;
 import com.jobportal.exception.JobPortalException;
 import com.jobportal.service.ProfileService;
 
@@ -31,17 +42,75 @@ public class ProfileController {
 		
 	}
 	
-	@GetMapping("/get/{id}")
-	public ResponseEntity<ProfileDTO> getProfile(@PathVariable Long id) throws JobPortalException{
+	@GetMapping("/user/{email}")
+	public ResponseEntity<Profile> getProfileForUser(@PathVariable String email) throws JobPortalException{
 		
-		return new ResponseEntity<>(profileService.getProfile(id),HttpStatus.OK);
+		return new ResponseEntity<>(profileService.getProfileForUser(email),HttpStatus.OK);
+	}
+	
+	@PutMapping("/header/{id}")
+	public ResponseEntity<HeaderDto> updateHeader(@RequestBody HeaderDto dto , @PathVariable Long id) throws JobPortalException{
+		
+		
+		
+		return new ResponseEntity<>(profileService.updateHeader(dto, id),HttpStatus.OK);
+	}
+	
+	@PutMapping("/links/{id}")
+	public ResponseEntity<LinksDto> updateLinks(
+	        @RequestBody LinksDto dto,
+	        @PathVariable Long id) throws JobPortalException {
+
+	    return ResponseEntity.ok(profileService.updateLinks(dto, id));
 	}
 	
 	
-	
-	@PutMapping("/update")
-	public ResponseEntity<ProfileDTO> upDateProfile(@RequestBody ProfileDTO profileDTO) throws JobPortalException{
-		
-		return new ResponseEntity<>(profileService.upDateProfile(profileDTO),HttpStatus.OK);
+	@PutMapping("/about/{id}")
+	public ResponseEntity<AboutDto> updateAbout(
+	        @RequestBody AboutDto dto,
+	        @PathVariable Long id) throws JobPortalException {
+
+	    return ResponseEntity.ok(profileService.updateAbout(dto, id));
 	}
+	
+	@PutMapping("/skills/{id}")
+	public ResponseEntity<SkillsDto> updateSkills(
+	        @RequestBody SkillsDto dto,
+	        @PathVariable Long id) throws JobPortalException {
+
+	    return ResponseEntity.ok(profileService.updateSkills(dto, id));
+	}
+	
+	
+	@PostMapping("/skill/{id}")
+	public ResponseEntity<SkillDto> addSkill(
+	        @RequestBody SkillDto dto,
+	        @PathVariable Long id) throws JobPortalException {
+
+	    return ResponseEntity.status(HttpStatus.CREATED)
+	            .body(profileService.addSkill(dto, id));
+	}
+	
+	@DeleteMapping("/skills/{id}")
+	public ResponseEntity<String> removeSkill(
+	        @RequestParam String skill,
+	        @PathVariable Long id) throws JobPortalException {
+
+	    profileService.removeSkill(skill, id);
+
+	    return ResponseEntity.ok("Skill removed successfully.");
+	}
+	
+	
+	@PostMapping("/experience/{id}")
+	public ResponseEntity<ExperienceDto> addExperience(
+	        @RequestBody ExperienceDto dto,
+	        @PathVariable Long id) throws JobPortalException {
+
+	    return new ResponseEntity<>(
+	            profileService.addExperience(dto, id),
+	            HttpStatus.CREATED
+	    );
+	}
+	
 }

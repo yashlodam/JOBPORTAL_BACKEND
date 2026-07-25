@@ -1,6 +1,7 @@
 package com.jobportal.serviceImpl;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -60,7 +61,7 @@ public class UserServiceImpl implements UserService {
 
         Profile profile = new Profile();
         profile.setEmail(userDTO.getEmail());
-
+        
         user.setProfile(profile);
         profile.setUser(user);
 
