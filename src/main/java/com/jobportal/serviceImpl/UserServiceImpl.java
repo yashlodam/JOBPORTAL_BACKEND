@@ -10,6 +10,7 @@ import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import com.jobportal.config.JwtProvider;
 import com.jobportal.dto.LoginDTO;
 import com.jobportal.dto.ProfileDTO;
 import com.jobportal.dto.UserDTO;
@@ -43,6 +44,9 @@ public class UserServiceImpl implements UserService {
     
     @Autowired
     private OtpRepository otpRepository;
+    
+    @Autowired
+    private JwtProvider jwtProvider;
 
    
     
@@ -282,6 +286,18 @@ public class UserServiceImpl implements UserService {
         otpRepository.delete(otp);
 
         return true;
+    }
+
+    @Override
+    public UserDTO getUserProfile(String jwt) throws JobPortalException {
+
+        String email = JwtProvider.getEmailFromJwtToken(jwt);
+
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() ->
+                        new JobPortalException("User not found"));
+
+        return mapper.map(user, UserDTO.class); // or convert manually
     }
 
 }

@@ -3,6 +3,10 @@ package com.jobportal.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -12,24 +16,31 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.jobportal.config.JwtProvider;
 import com.jobportal.dto.LoginDTO;
 import com.jobportal.dto.ResetPasswordRequest;
 import com.jobportal.dto.ResponseDTO;
 import com.jobportal.dto.UserDTO;
 import com.jobportal.dto.VerifyOtpRequest;
 import com.jobportal.exception.JobPortalException;
+import com.jobportal.response.AuthResponse;
 import com.jobportal.service.UserService;
 
 import jakarta.validation.Valid;
 
 @RestController
-@CrossOrigin
 @RequestMapping("/users")
 @Validated
 public class UserController {
 
 	@Autowired
 	private UserService userService;
+	
+	@Autowired
+	private JwtProvider jwtProvider;
+	
+	@Autowired
+	private AuthenticationManager authenticationManager;
 	
 	@PostMapping("/register")
 	public ResponseEntity<UserDTO> registerUser(@RequestBody @Valid UserDTO userDTO) throws JobPortalException {
@@ -41,11 +52,22 @@ public class UserController {
 	
 	
 	@PostMapping("/login")
-	public ResponseEntity<UserDTO> LoginUser(@RequestBody LoginDTO loginDTO) throws JobPortalException {
+	public ResponseEntity<AuthResponse> loginUser(@RequestBody LoginDTO loginDTO) {
 
-	   
+	    Authentication authentication = authenticationManager.authenticate(
+	            new UsernamePasswordAuthenticationToken(
+	                    loginDTO.getEmail(),
+	                    loginDTO.getPassword()));
 
-	    return new ResponseEntity<>(userService.loginUser(loginDTO),HttpStatus.OK);
+	    SecurityContextHolder.getContext().setAuthentication(authentication);
+
+	    String token = JwtProvider.generateToken(authentication);
+
+	    AuthResponse response = new AuthResponse();
+	    response.setToken(token);
+	    response.setMessage("Login Successful");
+
+	    return ResponseEntity.ok(response);
 	}
 	
 	@PostMapping("/sendOtp/{email}")
