@@ -15,6 +15,8 @@ public class ProfileDTO {
 	private String company;
 	private String location;
 	private String about;
+	private String profileImage;
+	private String bannerImage;
 	private List<String> skills;
 	private List<Experience> experiences;
 	private List<Certification> certifications;
@@ -24,6 +26,22 @@ public class ProfileDTO {
 		
 	}
 	
+	public String getProfileImage() {
+		return profileImage;
+	}
+
+	public void setProfileImage(String profileImage) {
+		this.profileImage = profileImage;
+	}
+
+	public String getBannerImage() {
+		return bannerImage;
+	}
+
+	public void setBannerImage(String bannerImage) {
+		this.bannerImage = bannerImage;
+	}
+
 	public Long getId() {
 		return id;
 	}
@@ -85,9 +103,10 @@ public class ProfileDTO {
 	}
 		
 	
+
 	public ProfileDTO(Long id, String email, String jobTitle, String company, String location, String about,
-			List<String> skills, List<Experience> experiences, List<Certification> certifications,
-			List<Education> educations) {
+			String profileImage, String bannerImage, List<String> skills, List<Experience> experiences,
+			List<Certification> certifications, List<Education> educations) {
 		super();
 		this.id = id;
 		this.email = email;
@@ -95,6 +114,8 @@ public class ProfileDTO {
 		this.company = company;
 		this.location = location;
 		this.about = about;
+		this.profileImage = profileImage;
+		this.bannerImage = bannerImage;
 		this.skills = skills;
 		this.experiences = experiences;
 		this.certifications = certifications;
