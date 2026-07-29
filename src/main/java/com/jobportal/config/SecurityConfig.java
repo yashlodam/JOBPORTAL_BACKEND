@@ -83,9 +83,10 @@ public class SecurityConfig {
                         
                         // Public Images
                         .requestMatchers("/uploads/**").permitAll()
+                        .requestMatchers("/jobs/**").permitAll()
 
-                        // Public Job APIs
-                        .requestMatchers(HttpMethod.GET, "/jobs/**").permitAll()
+//                        // Public Job APIs
+//                        .requestMatchers(HttpMethod.GET, "/jobs/**").permitAll()
 
                         // Swagger
                         .requestMatchers(
