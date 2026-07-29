@@ -131,13 +131,13 @@ public class ProfileController {
 	}
 	
 	@DeleteMapping("/skills/{id}")
-	public ResponseEntity<String> removeSkill(
-	        @RequestParam String skill,
-	        @PathVariable Long id) throws JobPortalException {
+	public ResponseEntity<?> removeSkill(
+	        @PathVariable Long id,
+	        @RequestParam String skill) throws JobPortalException {
 
 	    profileService.removeSkill(skill, id);
 
-	    return ResponseEntity.ok("Skill removed successfully.");
+	    return ResponseEntity.ok().build();
 	}
 	
 	

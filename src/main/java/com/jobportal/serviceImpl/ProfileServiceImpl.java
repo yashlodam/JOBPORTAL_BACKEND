@@ -179,6 +179,7 @@ public class ProfileServiceImpl implements ProfileService {
 	@Override
 	public SkillDto addSkill(SkillDto dto, Long id) throws JobPortalException {
 
+		System.out.println("Received Skill = " + dto.getSkill());
 	    Profile profile = profileRepository.findById(id)
 	            .orElseThrow(() -> new JobPortalException("Profile not found"));
 

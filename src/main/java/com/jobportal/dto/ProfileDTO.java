@@ -21,6 +21,35 @@ public class ProfileDTO {
 	private List<Experience> experiences;
 	private List<Certification> certifications;
 	private List<Education> educations;
+	
+	private String linkedinUrl;
+	private String githubUrl;
+	private String portfolioUrl;
+	
+	public String getLinkedinUrl() {
+		return linkedinUrl;
+	}
+
+	public void setLinkedinUrl(String linkedinUrl) {
+		this.linkedinUrl = linkedinUrl;
+	}
+
+	public String getGithubUrl() {
+		return githubUrl;
+	}
+
+	public void setGithubUrl(String githubUrl) {
+		this.githubUrl = githubUrl;
+	}
+
+	public String getPortfolioUrl() {
+		return portfolioUrl;
+	}
+
+	public void setPortfolioUrl(String portfolioUrl) {
+		this.portfolioUrl = portfolioUrl;
+	}
+
 	public String getEmail() {
 		return email;
 		
@@ -102,11 +131,11 @@ public class ProfileDTO {
 		this.educations = educations;
 	}
 		
-	
 
 	public ProfileDTO(Long id, String email, String jobTitle, String company, String location, String about,
 			String profileImage, String bannerImage, List<String> skills, List<Experience> experiences,
-			List<Certification> certifications, List<Education> educations) {
+			List<Certification> certifications, List<Education> educations, String linkedinUrl, String githubUrl,
+			String portfolioUrl) {
 		super();
 		this.id = id;
 		this.email = email;
@@ -120,6 +149,9 @@ public class ProfileDTO {
 		this.experiences = experiences;
 		this.certifications = certifications;
 		this.educations = educations;
+		this.linkedinUrl = linkedinUrl;
+		this.githubUrl = githubUrl;
+		this.portfolioUrl = portfolioUrl;
 	}
 
 	public ProfileDTO() {
