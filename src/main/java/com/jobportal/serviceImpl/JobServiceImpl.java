@@ -113,8 +113,22 @@ public class JobServiceImpl implements JobService{
 
 	@Override
 	public List<JobResponseDTO> getMyJobs(String email) throws JobPortalException {
-		// TODO Auto-generated method stub
-		return null;
+
+	    // Find logged-in user
+	    User user = userRepository.findByEmail(email)
+	            .orElseThrow(() -> new JobPortalException("User not found"));
+
+	    // Find recruiter
+	    Recruiter recruiter = recruiterRepository.findByUser(user)
+	            .orElseThrow(() -> new JobPortalException("Recruiter not found"));
+
+	    // Get recruiter's jobs
+	    List<Job> jobs = jobRepository.findByRecruiter(recruiter);
+
+	    // Convert Entity -> DTO
+	    return jobs.stream()
+	            .map(job -> mapper.map(job, JobResponseDTO.class))
+	            .toList();
 	}
 
 	@Override
