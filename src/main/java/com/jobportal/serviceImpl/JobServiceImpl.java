@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 
 import com.jobportal.dto.JobDTO;
 import com.jobportal.entity.Job;
+import com.jobportal.exception.JobPortalException;
 import com.jobportal.repository.JobRepository;
 import com.jobportal.service.JobService;
 
@@ -37,9 +38,19 @@ public class JobServiceImpl implements JobService{
 
 	@Override
 	public List<JobDTO> getAllJobs() {
+
+	    return jobRepository.findAll()
+	            .stream()
+	            .map(job -> mapper.map(job, JobDTO.class))
+	            .toList();
+	}
+
+	@Override
+	public JobDTO getJob(Long id) throws JobPortalException {
+	   
+		Job j = jobRepository.findById(id)
+				.orElseThrow(()-> new JobPortalException("Job Not Found for given Id"));
 		
-		List<Job> jobs = jobRepository.findAll();
-		
-		return null;
+		return mapper.map(j, JobDTO.class);
 	}
 }
