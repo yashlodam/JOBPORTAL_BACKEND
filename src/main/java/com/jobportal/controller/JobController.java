@@ -146,13 +146,12 @@ public class JobController {
 	
 	
 	
-	@GetMapping("/category/{categoryId}")
+	@GetMapping("/category/{category}")
 	public ResponseEntity<List<JobResponseDTO>> getJobsByCategory(
-	        @PathVariable Long categoryId)
+	        @PathVariable String category)
 	        throws JobPortalException {
 
-	    return ResponseEntity.ok(
-	            jobService.getJobsByCategory(categoryId));
+	    return ResponseEntity.ok(jobService.getJobsByCategory(category));
 	}
 	
 	

@@ -40,7 +40,7 @@ public interface JobService {
     List<JobResponseDTO> getCompanyJobs(Long companyId)
             throws JobPortalException;
 
-    List<JobResponseDTO> getJobsByCategory(Long categoryId)
+    List<JobResponseDTO> getJobsByCategory(String category)
             throws JobPortalException;
 
     List<JobResponseDTO> latestJobs();

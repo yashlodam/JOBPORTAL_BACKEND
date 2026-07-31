@@ -1,13 +1,11 @@
 package com.jobportal.serviceImpl;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import com.jobportal.dto.JobDTO;
 import com.jobportal.dto.JobRequestDTO;
 import com.jobportal.dto.JobResponseDTO;
 import com.jobportal.entity.Company;
@@ -15,6 +13,7 @@ import com.jobportal.entity.Job;
 import com.jobportal.entity.Recruiter;
 import com.jobportal.entity.User;
 import com.jobportal.exception.JobPortalException;
+import com.jobportal.repository.CompanyRepository;
 import com.jobportal.repository.JobRepository;
 import com.jobportal.repository.RecuriterRepository;
 import com.jobportal.repository.UserRepository;
@@ -31,6 +30,9 @@ public class JobServiceImpl implements JobService{
 	
 	@Autowired
 	private RecuriterRepository recruiterRepository;
+	
+	@Autowired
+	private CompanyRepository companyRepository;
 	
 	@Autowired
 	private ModelMapper mapper;
@@ -133,39 +135,137 @@ public class JobServiceImpl implements JobService{
 
 	@Override
 	public JobResponseDTO getJobById(Long jobId) throws JobPortalException {
-		// TODO Auto-generated method stub
-		return null;
+
+	    Job job = jobRepository.findById(jobId)
+	            .orElseThrow(() -> new JobPortalException("Job not found with id : " + jobId));
+
+	    return mapper.map(job, JobResponseDTO.class);
 	}
 
 	@Override
 	public List<JobResponseDTO> getAllJobs() {
-		// TODO Auto-generated method stub
-		return null;
+
+	    List<Job> jobs = jobRepository.findAll();
+
+	    return jobs.stream()
+	            .map(job -> {
+	                JobResponseDTO dto = mapper.map(job, JobResponseDTO.class);
+
+	                // Company Details
+	                dto.setCompanyId(job.getCompany().getId());
+	                dto.setCompanyName(job.getCompany().getCompanyName());
+	                dto.setCompanyLogo(job.getCompany().getLogo());
+
+	                // Recruiter Details
+	                dto.setRecruiterId(job.getRecruiter().getId());
+	                dto.setRecruiterName(job.getRecruiter().getUser().getName());
+
+	                return dto;
+	            })
+	            .toList();
 	}
 
 	@Override
 	public List<JobResponseDTO> searchJobs(String keyword) {
-		// TODO Auto-generated method stub
-		return null;
+
+	    List<Job> jobs = jobRepository.searchJobs(keyword);
+
+	    return jobs.stream()
+	            .map(job -> {
+	                JobResponseDTO dto = mapper.map(job, JobResponseDTO.class);
+
+	                dto.setCompanyId(job.getCompany().getId());
+	                dto.setCompanyName(job.getCompany().getCompanyName());
+	                dto.setCompanyLogo(job.getCompany().getLogo());
+
+	                dto.setRecruiterId(job.getRecruiter().getId());
+	                dto.setRecruiterName(job.getRecruiter().getUser().getName());
+
+	                return dto;
+	            })
+	            .toList();
 	}
 
 	@Override
-	public List<JobResponseDTO> filterJobs(String city, String jobType, String workingMode, String experienceLevel,
-			Long minimumSalary, Long maximumSalary) {
-		// TODO Auto-generated method stub
-		return null;
+	public List<JobResponseDTO> filterJobs(
+	        String city,
+	        String jobType,
+	        String workingMode,
+	        String experienceLevel,
+	        Long minimumSalary,
+	        Long maximumSalary) {
+
+	    List<Job> jobs = jobRepository.filterJobs(
+	            city,
+	            jobType,
+	            workingMode,
+	            experienceLevel,
+	            minimumSalary,
+	            maximumSalary);
+
+	    return jobs.stream()
+	            .map(job -> {
+	                JobResponseDTO dto = mapper.map(job, JobResponseDTO.class);
+
+	                dto.setCompanyId(job.getCompany().getId());
+	                dto.setCompanyName(job.getCompany().getCompanyName());
+	                dto.setCompanyLogo(job.getCompany().getLogo());
+
+	                dto.setRecruiterId(job.getRecruiter().getId());
+	                dto.setRecruiterName(job.getRecruiter().getUser().getName());
+
+	                return dto;
+	            })
+	            .toList();
 	}
 
 	@Override
 	public List<JobResponseDTO> getCompanyJobs(Long companyId) throws JobPortalException {
-		// TODO Auto-generated method stub
-		return null;
-	}
 
+	    Company company = companyRepository.findById(companyId)
+	            .orElseThrow(() -> new JobPortalException("Company not found with id : " + companyId));
+
+	    List<Job> jobs = jobRepository.findByCompanyId(companyId);
+
+	    return jobs.stream()
+	            .map(job -> {
+	                JobResponseDTO dto = mapper.map(job, JobResponseDTO.class);
+
+	                dto.setCompanyId(company.getId());
+	                dto.setCompanyName(company.getCompanyName());
+	                dto.setCompanyLogo(company.getLogo());
+
+	                dto.setRecruiterId(job.getRecruiter().getId());
+	                dto.setRecruiterName(job.getRecruiter().getUser().getName());
+
+	                return dto;
+	            })
+	            .toList();
+	}
+	
 	@Override
-	public List<JobResponseDTO> getJobsByCategory(Long categoryId) throws JobPortalException {
-		// TODO Auto-generated method stub
-		return null;
+	public List<JobResponseDTO> getJobsByCategory(String category) throws JobPortalException {
+
+	    List<Job> jobs = jobRepository.findByCategoryIgnoreCase(category);
+
+	    if (jobs.isEmpty()) {
+	        throw new JobPortalException("No jobs found for category : " + category);
+	    }
+
+	    return jobs.stream()
+	            .map(job -> {
+	                JobResponseDTO dto = mapper.map(job, JobResponseDTO.class);
+
+	                dto.setCompanyId(job.getCompany().getId());
+	                dto.setCompanyName(job.getCompany().getCompanyName());
+	                dto.setCompanyLogo(job.getCompany().getLogo());
+
+	                dto.setRecruiterId(job.getRecruiter().getId());
+	                dto.setRecruiterName(job.getRecruiter().getUser().getName());
+
+	                return dto;
+	            })
+	            .toList();
 	}
 
 	@Override
@@ -182,8 +282,31 @@ public class JobServiceImpl implements JobService{
 
 	@Override
 	public List<JobResponseDTO> similarJobs(Long jobId) throws JobPortalException {
-		// TODO Auto-generated method stub
-		return null;
+
+	    Job currentJob = jobRepository.findById(jobId)
+	            .orElseThrow(() -> new JobPortalException("Job not found"));
+
+	    List<Job> jobs = jobRepository.findSimilarJobs(
+	            currentJob.getId(),
+	            currentJob.getCategory(),
+	            currentJob.getCity(),
+	            currentJob.getJobTitle());
+
+	    return jobs.stream()
+	            .limit(5)
+	            .map(job -> {
+	                JobResponseDTO dto = mapper.map(job, JobResponseDTO.class);
+
+	                dto.setCompanyId(job.getCompany().getId());
+	                dto.setCompanyName(job.getCompany().getCompanyName());
+	                dto.setCompanyLogo(job.getCompany().getLogo());
+
+	                dto.setRecruiterId(job.getRecruiter().getId());
+	                dto.setRecruiterName(job.getRecruiter().getUser().getName());
+
+	                return dto;
+	            })
+	            .toList();
 	}
 
 	
