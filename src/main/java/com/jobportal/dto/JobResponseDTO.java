@@ -1,4 +1,4 @@
-package com.jobportal.entity;
+package com.jobportal.dto;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -9,57 +9,35 @@ import com.jobportal.domain.JobStatus;
 import com.jobportal.domain.JobType;
 import com.jobportal.domain.WorkingMode;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.ElementCollection;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.OneToMany;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
-import jakarta.persistence.Table;
+public class JobResponseDTO {
 
-@Entity
-@Table(name = "jobs")
-public class Job {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Basic Information
     private String jobTitle;
-    
+
     private String category;
 
-    @Column(length = 5000)
     private String description;
 
-    @Column(length = 3000)
     private String responsibilities;
 
-    @Column(length = 3000)
     private String requirements;
 
-    @Column(length = 3000)
     private String aboutRole;
 
-    @Column(length = 3000)
     private String benefits;
 
-    // Company & Recruiter
-    @ManyToOne
-    @JoinColumn(name = "company_id")
-    private Company company;
+    // Company Details
+    private Long companyId;
 
-    @ManyToOne
-    @JoinColumn(name = "recruiter_id")
-    private Recruiter recruiter;
+    private String companyName;
+
+    private String companyLogo;
+
+    // Recruiter Details
+    private Long recruiterId;
+
+    private String recruiterName;
 
     // Location
     private String city;
@@ -68,14 +46,11 @@ public class Job {
 
     private String country;
 
-    @Enumerated(EnumType.STRING)
+    // Employment
     private WorkingMode workingMode;
 
-    // Employment
-    @Enumerated(EnumType.STRING)
     private JobType jobType;
 
-    @Enumerated(EnumType.STRING)
     private ExperienceLevel experienceLevel;
 
     private Integer minimumExperience;
@@ -93,10 +68,8 @@ public class Job {
     private Integer vacancies;
 
     // Skills
-    @ElementCollection
     private List<String> skillsRequired;
 
-    @ElementCollection
     private List<String> preferredSkills;
 
     // Education
@@ -107,16 +80,16 @@ public class Job {
 
     private Integer numberOfInterviewRounds;
 
-    @Enumerated(EnumType.STRING)
     private JobStatus status;
 
-    // Metadata
+    // Analytics
     private Integer totalApplicants;
 
     private Integer totalViews;
 
     private Integer totalBookmarks;
 
+    // Flags
     private Boolean featured;
 
     private Boolean urgentHiring;
@@ -128,50 +101,8 @@ public class Job {
 
     private LocalDateTime updatedOn;
 
-    @OneToMany(mappedBy = "job")
-    private List<JobApplication> applications;
-
-    @PrePersist
-    public void onCreate() {
-        postedOn = LocalDateTime.now();
-        updatedOn = LocalDateTime.now();
-
-        if (featured == null)
-            featured = false;
-
-        if (urgentHiring == null)
-            urgentHiring = false;
-
-        if (easyApply == null)
-            easyApply = true;
-
-        if (totalApplicants == null)
-            totalApplicants = 0;
-
-        if (totalViews == null)
-            totalViews = 0;
-
-        if (totalBookmarks == null)
-            totalBookmarks = 0;
-    }
-
-    @PreUpdate
-    public void onUpdate() {
-        updatedOn = LocalDateTime.now();
-    }
-
 	public Long getId() {
 		return id;
-	}
-	
-	
-
-	public String getCategory() {
-		return category;
-	}
-
-	public void setCategory(String category) {
-		this.category = category;
 	}
 
 	public void setId(Long id) {
@@ -184,6 +115,14 @@ public class Job {
 
 	public void setJobTitle(String jobTitle) {
 		this.jobTitle = jobTitle;
+	}
+
+	public String getCategory() {
+		return category;
+	}
+
+	public void setCategory(String category) {
+		this.category = category;
 	}
 
 	public String getDescription() {
@@ -226,20 +165,44 @@ public class Job {
 		this.benefits = benefits;
 	}
 
-	public Company getCompany() {
-		return company;
+	public Long getCompanyId() {
+		return companyId;
 	}
 
-	public void setCompany(Company company) {
-		this.company = company;
+	public void setCompanyId(Long companyId) {
+		this.companyId = companyId;
 	}
 
-	public Recruiter getRecruiter() {
-		return recruiter;
+	public String getCompanyName() {
+		return companyName;
 	}
 
-	public void setRecruiter(Recruiter recruiter) {
-		this.recruiter = recruiter;
+	public void setCompanyName(String companyName) {
+		this.companyName = companyName;
+	}
+
+	public String getCompanyLogo() {
+		return companyLogo;
+	}
+
+	public void setCompanyLogo(String companyLogo) {
+		this.companyLogo = companyLogo;
+	}
+
+	public Long getRecruiterId() {
+		return recruiterId;
+	}
+
+	public void setRecruiterId(Long recruiterId) {
+		this.recruiterId = recruiterId;
+	}
+
+	public String getRecruiterName() {
+		return recruiterName;
+	}
+
+	public void setRecruiterName(String recruiterName) {
+		this.recruiterName = recruiterName;
 	}
 
 	public String getCity() {
@@ -450,26 +413,15 @@ public class Job {
 		this.updatedOn = updatedOn;
 	}
 
-	public List<JobApplication> getApplications() {
-		return applications;
-	}
-
-	public void setApplications(List<JobApplication> applications) {
-		this.applications = applications;
-	}
-	
-	public Job() {
-		
-	}
-
-	public Job(Long id, String jobTitle, String category, String description, String responsibilities,
-			String requirements, String aboutRole, String benefits, Company company, Recruiter recruiter, String city,
-			String state, String country, WorkingMode workingMode, JobType jobType, ExperienceLevel experienceLevel,
-			Integer minimumExperience, Integer maximumExperience, Long minimumSalary, Long maximumSalary,
-			String currency, Integer vacancies, List<String> skillsRequired, List<String> preferredSkills,
-			String qualification, LocalDate applicationDeadline, Integer numberOfInterviewRounds, JobStatus status,
-			Integer totalApplicants, Integer totalViews, Integer totalBookmarks, Boolean featured, Boolean urgentHiring,
-			Boolean easyApply, LocalDateTime postedOn, LocalDateTime updatedOn, List<JobApplication> applications) {
+	public JobResponseDTO(Long id, String jobTitle, String category, String description, String responsibilities,
+			String requirements, String aboutRole, String benefits, Long companyId, String companyName,
+			String companyLogo, Long recruiterId, String recruiterName, String city, String state, String country,
+			WorkingMode workingMode, JobType jobType, ExperienceLevel experienceLevel, Integer minimumExperience,
+			Integer maximumExperience, Long minimumSalary, Long maximumSalary, String currency, Integer vacancies,
+			List<String> skillsRequired, List<String> preferredSkills, String qualification,
+			LocalDate applicationDeadline, Integer numberOfInterviewRounds, JobStatus status, Integer totalApplicants,
+			Integer totalViews, Integer totalBookmarks, Boolean featured, Boolean urgentHiring, Boolean easyApply,
+			LocalDateTime postedOn, LocalDateTime updatedOn) {
 		super();
 		this.id = id;
 		this.jobTitle = jobTitle;
@@ -479,8 +431,11 @@ public class Job {
 		this.requirements = requirements;
 		this.aboutRole = aboutRole;
 		this.benefits = benefits;
-		this.company = company;
-		this.recruiter = recruiter;
+		this.companyId = companyId;
+		this.companyName = companyName;
+		this.companyLogo = companyLogo;
+		this.recruiterId = recruiterId;
+		this.recruiterName = recruiterName;
 		this.city = city;
 		this.state = state;
 		this.country = country;
@@ -507,10 +462,11 @@ public class Job {
 		this.easyApply = easyApply;
 		this.postedOn = postedOn;
 		this.updatedOn = updatedOn;
-		this.applications = applications;
 	}
 
-	
+	public JobResponseDTO() {
+	}
+    // Getters, Setters, Constructors
     
     
 }

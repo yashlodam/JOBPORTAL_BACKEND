@@ -11,11 +11,13 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import com.jobportal.config.JwtProvider;
+import com.jobportal.dto.AccountType;
 import com.jobportal.dto.LoginDTO;
 import com.jobportal.dto.ProfileDTO;
 import com.jobportal.dto.UserDTO;
 import com.jobportal.entity.Otp;
 import com.jobportal.entity.Profile;
+import com.jobportal.entity.Recruiter;
 import com.jobportal.entity.User;
 import com.jobportal.exception.JobPortalException;
 import com.jobportal.repository.OtpRepository;
@@ -63,11 +65,21 @@ public class UserServiceImpl implements UserService {
         user.setPassword(passwordEncoder.encode(userDTO.getPassword()));
         user.setAccountType(userDTO.getAccountType());
 
-        Profile profile = new Profile();
-        profile.setEmail(userDTO.getEmail());
-        
-        user.setProfile(profile);
-        profile.setUser(user);
+        if (userDTO.getAccountType() == AccountType.APPLICANT) {
+
+            Profile profile = new Profile();
+            profile.setEmail(user.getEmail());
+
+            profile.setUser(user);
+            user.setProfile(profile);
+
+        } else if (userDTO.getAccountType() == AccountType.EMPLOYER) {
+
+            Recruiter recruiter = new Recruiter();
+            recruiter.setUser(user);
+
+            user.setRecruiter(recruiter);
+        }
 
         User savedUser = userRepository.save(user);
 

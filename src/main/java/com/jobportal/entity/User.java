@@ -64,14 +64,32 @@ public class User {
     private Profile profile;
     
     
-
+    @OneToOne(mappedBy = "user", cascade = CascadeType.ALL)
+    private Recruiter recruiter;
+    
    
 
-	public User(Long id, String name,
-			 String email,
-			 String password,
-			 AccountType accountType, LocalDateTime createdOn,
-			LocalDateTime updatedOn, Profile profile) {
+	public Recruiter getRecruiter() {
+		return recruiter;
+	}
+
+
+
+	public void setRecruiter(Recruiter recruiter) {
+		this.recruiter = recruiter;
+	}
+
+
+
+	
+
+
+	public User(Long id,
+			@NotBlank(message = "Name cannot be blank") @Size(min = 3, max = 50, message = "Name must be between 3 and 50 characters") String name,
+			@NotBlank(message = "Email cannot be blank") @Email(message = "Please enter a valid email address") String email,
+			@NotBlank(message = "Password cannot be blank") String password,
+			@NotNull(message = "Account type is required") AccountType accountType, LocalDateTime createdOn,
+			LocalDateTime updatedOn, Profile profile, Recruiter recruiter) {
 		super();
 		this.id = id;
 		this.name = name;
@@ -81,6 +99,7 @@ public class User {
 		this.createdOn = createdOn;
 		this.updatedOn = updatedOn;
 		this.profile = profile;
+		this.recruiter = recruiter;
 	}
 
 

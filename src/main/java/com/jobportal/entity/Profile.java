@@ -97,6 +97,8 @@ public class Profile {
 	@JsonIgnore
 	private User user;
     
+	 @OneToOne(mappedBy = "profile", cascade = CascadeType.ALL)
+	    private Resume resume;
     
     
     public Profile(Long id, String email, String name, String jobTitle, String company, String location,

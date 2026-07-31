@@ -1,182 +1,95 @@
-package com.jobportal.entity;
+package com.jobportal.dto;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
 
 import com.jobportal.domain.ExperienceLevel;
-import com.jobportal.domain.JobStatus;
 import com.jobportal.domain.JobType;
 import com.jobportal.domain.WorkingMode;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.ElementCollection;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
-import jakarta.persistence.OneToMany;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.PreUpdate;
-import jakarta.persistence.Table;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
-@Entity
-@Table(name = "jobs")
-public class Job {
+public class JobRequestDTO {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    // Basic Information
+    @NotBlank(message = "Job title is required")
+    @Size(max = 150)
     private String jobTitle;
-    
+
+    @NotBlank(message = "Category is required")
     private String category;
 
-    @Column(length = 5000)
+    @NotBlank(message = "Description is required")
+    @Size(max = 5000)
     private String description;
 
-    @Column(length = 3000)
+    @Size(max = 3000)
     private String responsibilities;
 
-    @Column(length = 3000)
+    @Size(max = 3000)
     private String requirements;
 
-    @Column(length = 3000)
+    @Size(max = 3000)
     private String aboutRole;
 
-    @Column(length = 3000)
+    @Size(max = 3000)
     private String benefits;
 
-    // Company & Recruiter
-    @ManyToOne
-    @JoinColumn(name = "company_id")
-    private Company company;
-
-    @ManyToOne
-    @JoinColumn(name = "recruiter_id")
-    private Recruiter recruiter;
-
-    // Location
+    @NotBlank
     private String city;
 
+    @NotBlank
     private String state;
 
+    @NotBlank
     private String country;
 
-    @Enumerated(EnumType.STRING)
+    @NotNull
     private WorkingMode workingMode;
 
-    // Employment
-    @Enumerated(EnumType.STRING)
+    @NotNull
     private JobType jobType;
 
-    @Enumerated(EnumType.STRING)
+    @NotNull
     private ExperienceLevel experienceLevel;
 
+    @Min(0)
     private Integer minimumExperience;
 
+    @Min(0)
     private Integer maximumExperience;
 
-    // Salary
+    @Min(0)
     private Long minimumSalary;
 
+    @Min(0)
     private Long maximumSalary;
 
+    @NotBlank
     private String currency;
 
-    // Vacancy
+    @Min(1)
     private Integer vacancies;
 
-    // Skills
-    @ElementCollection
+    @NotNull
     private List<String> skillsRequired;
 
-    @ElementCollection
     private List<String> preferredSkills;
 
-    // Education
     private String qualification;
 
-    // Hiring
     private LocalDate applicationDeadline;
 
+    @Min(1)
     private Integer numberOfInterviewRounds;
 
-    @Enumerated(EnumType.STRING)
-    private JobStatus status;
+    private Boolean featured = false;
 
-    // Metadata
-    private Integer totalApplicants;
+    private Boolean urgentHiring = false;
 
-    private Integer totalViews;
-
-    private Integer totalBookmarks;
-
-    private Boolean featured;
-
-    private Boolean urgentHiring;
-
-    private Boolean easyApply;
-
-    // Dates
-    private LocalDateTime postedOn;
-
-    private LocalDateTime updatedOn;
-
-    @OneToMany(mappedBy = "job")
-    private List<JobApplication> applications;
-
-    @PrePersist
-    public void onCreate() {
-        postedOn = LocalDateTime.now();
-        updatedOn = LocalDateTime.now();
-
-        if (featured == null)
-            featured = false;
-
-        if (urgentHiring == null)
-            urgentHiring = false;
-
-        if (easyApply == null)
-            easyApply = true;
-
-        if (totalApplicants == null)
-            totalApplicants = 0;
-
-        if (totalViews == null)
-            totalViews = 0;
-
-        if (totalBookmarks == null)
-            totalBookmarks = 0;
-    }
-
-    @PreUpdate
-    public void onUpdate() {
-        updatedOn = LocalDateTime.now();
-    }
-
-	public Long getId() {
-		return id;
-	}
-	
-	
-
-	public String getCategory() {
-		return category;
-	}
-
-	public void setCategory(String category) {
-		this.category = category;
-	}
-
-	public void setId(Long id) {
-		this.id = id;
-	}
+    private Boolean easyApply = true;
 
 	public String getJobTitle() {
 		return jobTitle;
@@ -184,6 +97,14 @@ public class Job {
 
 	public void setJobTitle(String jobTitle) {
 		this.jobTitle = jobTitle;
+	}
+
+	public String getCategory() {
+		return category;
+	}
+
+	public void setCategory(String category) {
+		this.category = category;
 	}
 
 	public String getDescription() {
@@ -224,22 +145,6 @@ public class Job {
 
 	public void setBenefits(String benefits) {
 		this.benefits = benefits;
-	}
-
-	public Company getCompany() {
-		return company;
-	}
-
-	public void setCompany(Company company) {
-		this.company = company;
-	}
-
-	public Recruiter getRecruiter() {
-		return recruiter;
-	}
-
-	public void setRecruiter(Recruiter recruiter) {
-		this.recruiter = recruiter;
 	}
 
 	public String getCity() {
@@ -378,38 +283,6 @@ public class Job {
 		this.numberOfInterviewRounds = numberOfInterviewRounds;
 	}
 
-	public JobStatus getStatus() {
-		return status;
-	}
-
-	public void setStatus(JobStatus status) {
-		this.status = status;
-	}
-
-	public Integer getTotalApplicants() {
-		return totalApplicants;
-	}
-
-	public void setTotalApplicants(Integer totalApplicants) {
-		this.totalApplicants = totalApplicants;
-	}
-
-	public Integer getTotalViews() {
-		return totalViews;
-	}
-
-	public void setTotalViews(Integer totalViews) {
-		this.totalViews = totalViews;
-	}
-
-	public Integer getTotalBookmarks() {
-		return totalBookmarks;
-	}
-
-	public void setTotalBookmarks(Integer totalBookmarks) {
-		this.totalBookmarks = totalBookmarks;
-	}
-
 	public Boolean getFeatured() {
 		return featured;
 	}
@@ -434,44 +307,18 @@ public class Job {
 		this.easyApply = easyApply;
 	}
 
-	public LocalDateTime getPostedOn() {
-		return postedOn;
-	}
-
-	public void setPostedOn(LocalDateTime postedOn) {
-		this.postedOn = postedOn;
-	}
-
-	public LocalDateTime getUpdatedOn() {
-		return updatedOn;
-	}
-
-	public void setUpdatedOn(LocalDateTime updatedOn) {
-		this.updatedOn = updatedOn;
-	}
-
-	public List<JobApplication> getApplications() {
-		return applications;
-	}
-
-	public void setApplications(List<JobApplication> applications) {
-		this.applications = applications;
-	}
-	
-	public Job() {
-		
-	}
-
-	public Job(Long id, String jobTitle, String category, String description, String responsibilities,
-			String requirements, String aboutRole, String benefits, Company company, Recruiter recruiter, String city,
-			String state, String country, WorkingMode workingMode, JobType jobType, ExperienceLevel experienceLevel,
-			Integer minimumExperience, Integer maximumExperience, Long minimumSalary, Long maximumSalary,
-			String currency, Integer vacancies, List<String> skillsRequired, List<String> preferredSkills,
-			String qualification, LocalDate applicationDeadline, Integer numberOfInterviewRounds, JobStatus status,
-			Integer totalApplicants, Integer totalViews, Integer totalBookmarks, Boolean featured, Boolean urgentHiring,
-			Boolean easyApply, LocalDateTime postedOn, LocalDateTime updatedOn, List<JobApplication> applications) {
+	public JobRequestDTO(@NotBlank(message = "Job title is required") @Size(max = 150) String jobTitle,
+			@NotBlank(message = "Category is required") String category,
+			@NotBlank(message = "Description is required") @Size(max = 5000) String description,
+			@Size(max = 3000) String responsibilities, @Size(max = 3000) String requirements,
+			@Size(max = 3000) String aboutRole, @Size(max = 3000) String benefits, @NotBlank String city,
+			@NotBlank String state, @NotBlank String country, @NotNull WorkingMode workingMode,
+			@NotNull JobType jobType, @NotNull ExperienceLevel experienceLevel, @Min(0) Integer minimumExperience,
+			@Min(0) Integer maximumExperience, @Min(0) Long minimumSalary, @Min(0) Long maximumSalary,
+			@NotBlank String currency, @Min(1) Integer vacancies, @NotNull List<String> skillsRequired,
+			List<String> preferredSkills, String qualification, LocalDate applicationDeadline,
+			@Min(1) Integer numberOfInterviewRounds, Boolean featured, Boolean urgentHiring, Boolean easyApply) {
 		super();
-		this.id = id;
 		this.jobTitle = jobTitle;
 		this.category = category;
 		this.description = description;
@@ -479,8 +326,6 @@ public class Job {
 		this.requirements = requirements;
 		this.aboutRole = aboutRole;
 		this.benefits = benefits;
-		this.company = company;
-		this.recruiter = recruiter;
 		this.city = city;
 		this.state = state;
 		this.country = country;
@@ -498,19 +343,16 @@ public class Job {
 		this.qualification = qualification;
 		this.applicationDeadline = applicationDeadline;
 		this.numberOfInterviewRounds = numberOfInterviewRounds;
-		this.status = status;
-		this.totalApplicants = totalApplicants;
-		this.totalViews = totalViews;
-		this.totalBookmarks = totalBookmarks;
 		this.featured = featured;
 		this.urgentHiring = urgentHiring;
 		this.easyApply = easyApply;
-		this.postedOn = postedOn;
-		this.updatedOn = updatedOn;
-		this.applications = applications;
 	}
 
-	
+    // Getters, Setters, Constructors
+    
+    
+    
+    
     
     
 }
