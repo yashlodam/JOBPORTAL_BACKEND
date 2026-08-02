@@ -1,104 +1,73 @@
 package com.jobportal.entity;
 
-import java.time.LocalDateTime;
-
 import com.jobportal.domain.ApplicationStatus;
 
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 
 @Entity
-@Table(name = "job_applications")
-public class JobApplication {
+@Table(
+    name = "job_applications",
+    uniqueConstraints = {
+        @UniqueConstraint(
+            name = "uq_user_job_application",
+            columnNames = {"applicant_id", "job_id"}
+        )
+    }
+)
+public class JobApplication extends Auditable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne
-    @JoinColumn(name = "job_id")
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "job_id", nullable = false)
     private Job job;
 
-    @ManyToOne
-    @JoinColumn(name = "applicant_id")
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "applicant_id", nullable = false)
     private User applicant;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "resume_id")
     private Resume resume;
 
     @Enumerated(EnumType.STRING)
-    private ApplicationStatus status;
+    @Column(nullable = false)
+    private ApplicationStatus status = ApplicationStatus.APPLIED;
 
-    private LocalDateTime appliedAt;
+    @Column(length = 2000)
+    private String coverLetter;
 
-	public Long getId() {
-		return id;
-	}
+    public JobApplication() {
+    }
 
-	public void setId(Long id) {
-		this.id = id;
-	}
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
 
-	public Job getJob() {
-		return job;
-	}
+    public Job getJob() { return job; }
+    public void setJob(Job job) { this.job = job; }
 
-	public void setJob(Job job) {
-		this.job = job;
-	}
+    public User getApplicant() { return applicant; }
+    public void setApplicant(User applicant) { this.applicant = applicant; }
 
-	public User getApplicant() {
-		return applicant;
-	}
+    public Resume getResume() { return resume; }
+    public void setResume(Resume resume) { this.resume = resume; }
 
-	public void setApplicant(User applicant) {
-		this.applicant = applicant;
-	}
+    public ApplicationStatus getStatus() { return status; }
+    public void setStatus(ApplicationStatus status) { this.status = status; }
 
-	public Resume getResume() {
-		return resume;
-	}
-
-	public void setResume(Resume resume) {
-		this.resume = resume;
-	}
-
-	public ApplicationStatus getStatus() {
-		return status;
-	}
-
-	public void setStatus(ApplicationStatus status) {
-		this.status = status;
-	}
-
-	public LocalDateTime getAppliedAt() {
-		return appliedAt;
-	}
-
-	public void setAppliedAt(LocalDateTime appliedAt) {
-		this.appliedAt = appliedAt;
-	}
-
-	public JobApplication(Long id, Job job, User applicant, Resume resume, ApplicationStatus status,
-			LocalDateTime appliedAt) {
-		super();
-		this.id = id;
-		this.job = job;
-		this.applicant = applicant;
-		this.resume = resume;
-		this.status = status;
-		this.appliedAt = appliedAt;
-	}
-    
-    
-    
-   
+    public String getCoverLetter() { return coverLetter; }
+    public void setCoverLetter(String coverLetter) { this.coverLetter = coverLetter; }
 }

@@ -1,11 +1,11 @@
 package com.jobportal.domain;
 
 public enum ExperienceLevel {
-
-    FRESHER,
-    JUNIOR,
+    INTERNSHIP,
+    ENTRY_LEVEL,
     MID_LEVEL,
-    SENIOR,
+    SENIOR_LEVEL,
     LEAD,
-    MANAGER
+    MANAGER,
+    EXECUTIVE
 }

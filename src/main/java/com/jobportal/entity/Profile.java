@@ -3,12 +3,14 @@ package com.jobportal.entity;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonManagedReference;
-import com.jobportal.dto.Availability;
-import com.jobportal.dto.ExperienceLevel;
+import org.hibernate.annotations.BatchSize;
+
+import com.jobportal.domain.Availability;
+import com.jobportal.domain.ExperienceLevel;
 
 import jakarta.persistence.CascadeType;
+import jakarta.persistence.CollectionTable;
+import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -17,287 +19,113 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.Lob;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OneToOne;
+import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 
+/**
+ * Aggregate root for a user's professional profile.
+ *
+ * <h3>Lazy-loading strategy</h3>
+ * All collections are LAZY (correct default — never EAGER). When a full
+ * ProfileResponse is needed, {@code ProfileRepository.findByUserEmailWithDetails}
+ * loads the {@code @OneToOne} associations ({@code user}, {@code resume}) via
+ * EntityGraph, and all {@code @ElementCollection} / {@code @OneToMany} bags are
+ * loaded by Hibernate's {@code @BatchSize} mechanism.
+ *
+ * <p>{@code @BatchSize(size = 25)} on each collection means: once any
+ * collection-element is accessed, Hibernate issues a single
+ * {@code WHERE profile_id IN (…)} query for up to 25 profiles at once —
+ * eliminating N+1 without a Cartesian JOIN FETCH.</p>
+ */
 @Entity
 @Table(name = "profiles")
-public class Profile {
+public class Profile extends Auditable {
 
-	@Id
-	@GeneratedValue(strategy = GenerationType.IDENTITY)
-	private Long id;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
-	// User
-	private String email;
+    // ── Header fields ────────────────────────────────────────────────────────
 
-	// Header
-	private String name;
-	private String jobTitle;          // Current Role
-	private String company;
-	private String location;
-	 @Enumerated(EnumType.STRING)
-	    private Availability availability;
+    private String headline;
+    private String currentCompany;
+    private String location;
 
-	    @Enumerated(EnumType.STRING)
-	    private ExperienceLevel experienceLevel;
-	private String about;
+    @Enumerated(EnumType.STRING)
+    private Availability availability;
 
-	// Images
-	private String profileImage;
-	private String bannerImage;
+    @Enumerated(EnumType.STRING)
+    private ExperienceLevel experienceLevel;
 
-	// Social Links
-	private String linkedinUrl;
-	private String githubUrl;
-	private String portfolioUrl;
+    // ── Element Collections ──────────────────────────────────────────────────
 
-	// Skills
-	@ElementCollection
-	private List<String> skills = new ArrayList<>();
+    /**
+     * @BatchSize(25): when skills are accessed, Hibernate loads them for up to
+     * 25 profile IDs at once via a single IN-clause query.
+     * @CollectionTable + @Column: explicit DDL so column names are predictable.
+     * @OrderColumn: preserves insertion order; avoids "bag" vs "list" ambiguity.
+     */
+    @ElementCollection(fetch = FetchType.LAZY)
+    @CollectionTable(name = "profile_skills",
+            joinColumns = @JoinColumn(name = "profile_id"))
+    @Column(name = "skill")
+    @OrderColumn(name = "skill_order")
+    @BatchSize(size = 25)
+    private List<String> skills = new ArrayList<>();
 
-	// Languages
-	@ElementCollection
-	private List<String> languages = new ArrayList<>();
+    @ElementCollection(fetch = FetchType.LAZY)
+    @CollectionTable(name = "profile_languages",
+            joinColumns = @JoinColumn(name = "profile_id"))
+    @Column(name = "language")
+    @OrderColumn(name = "language_order")
+    @BatchSize(size = 25)
+    private List<String> languages = new ArrayList<>();
 
-	// Experience
-	@OneToMany(
-	    mappedBy = "profile",
-	    cascade = CascadeType.ALL,
-	    orphanRemoval = true,
-	    fetch = FetchType.LAZY
-	)
-	@JsonManagedReference
-	private List<Experience> experiences = new ArrayList<>();
+    // ── Scalar fields ─────────────────────────────────────────────────────────
 
-	// Education
-	@OneToMany(
-	    mappedBy = "profile",
-	    cascade = CascadeType.ALL,
-	    orphanRemoval = true,
-	    fetch = FetchType.LAZY
-	)
-	@JsonManagedReference
-	private List<Education> educations = new ArrayList<>();
+    @Lob
+    @Column(columnDefinition = "TEXT")
+    private String about;
+    private String profileImage;
+    private String bannerImage;
+    private String linkedinUrl;
+    private String githubUrl;
+    private String portfolioUrl;
 
-	// Certifications
-	@OneToMany(
-	    mappedBy = "profile",
-	    cascade = CascadeType.ALL,
-	    orphanRemoval = true,
-	    fetch = FetchType.LAZY
-	)
-	@JsonManagedReference
-	private List<Certification> certifications = new ArrayList<>();
+    // ── One-to-Many Collections ───────────────────────────────────────────────
 
-	
+    @OneToMany(mappedBy = "profile", cascade = CascadeType.ALL,
+               orphanRemoval = true, fetch = FetchType.LAZY)
+    @BatchSize(size = 25)
+    private List<Experience> experiences = new ArrayList<>();
 
-	@OneToOne(mappedBy = "profile")
-	@JsonIgnore
-	private User user;
-    
-	 @OneToOne(mappedBy = "profile", cascade = CascadeType.ALL)
-	    private Resume resume;
-    
-    
-    public Profile(Long id, String email, String name, String jobTitle, String company, String location,
-			Availability availability, ExperienceLevel experienceLevel, String about, String profileImage,
-			String bannerImage, String linkedinUrl, String githubUrl, String portfolioUrl, List<String> skills,
-			List<String> languages, List<Experience> experiences, List<Education> educations,
-			List<Certification> certifications, User user) {
-		super();
-		this.id = id;
-		this.email = email;
-		this.name = name;
-		this.jobTitle = jobTitle;
-		this.company = company;
-		this.location = location;
-		this.availability = availability;
-		this.experienceLevel = experienceLevel;
-		this.about = about;
-		this.profileImage = profileImage;
-		this.bannerImage = bannerImage;
-		this.linkedinUrl = linkedinUrl;
-		this.githubUrl = githubUrl;
-		this.portfolioUrl = portfolioUrl;
-		this.skills = skills;
-		this.languages = languages;
-		this.experiences = experiences;
-		this.educations = educations;
-		this.certifications = certifications;
-		this.user = user;
-	}
+    @OneToMany(mappedBy = "profile", cascade = CascadeType.ALL,
+               orphanRemoval = true, fetch = FetchType.LAZY)
+    @BatchSize(size = 25)
+    private List<Education> educations = new ArrayList<>();
 
-	public Availability getAvailability() {
-		return availability;
-	}
+    @OneToMany(mappedBy = "profile", cascade = CascadeType.ALL,
+               orphanRemoval = true, fetch = FetchType.LAZY)
+    @BatchSize(size = 25)
+    private List<Certification> certifications = new ArrayList<>();
 
-	public void setAvailability(Availability availability) {
-		this.availability = availability;
-	}
+    // ── One-to-One Associations ───────────────────────────────────────────────
 
-	public ExperienceLevel getExperienceLevel() {
-		return experienceLevel;
-	}
+    @OneToOne(mappedBy = "profile", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private Resume resume;
 
-	public void setExperienceLevel(ExperienceLevel experienceLevel) {
-		this.experienceLevel = experienceLevel;
-	}
+    @OneToOne(mappedBy = "profile", fetch = FetchType.LAZY)
+    private User user;
 
-	public Profile() {
-    	
-    }
+    public Profile() {}
 
-	// Helper Methods
+    // ── Helper Methods ───────────────────────────────────────────────────────
 
-    public Long getId() {
-		return id;
-	}
-
-	public void setId(Long id) {
-		this.id = id;
-	}
-
-	public String getEmail() {
-		return email;
-	}
-
-	public void setEmail(String email) {
-		this.email = email;
-	}
-
-	public String getName() {
-		return name;
-	}
-
-	public void setName(String name) {
-		this.name = name;
-	}
-
-	public String getJobTitle() {
-		return jobTitle;
-	}
-
-	public void setJobTitle(String jobTitle) {
-		this.jobTitle = jobTitle;
-	}
-
-	public String getCompany() {
-		return company;
-	}
-
-	public void setCompany(String company) {
-		this.company = company;
-	}
-
-	public String getLocation() {
-		return location;
-	}
-
-	public void setLocation(String location) {
-		this.location = location;
-	}
-
-	
-
-	public String getAbout() {
-		return about;
-	}
-
-	public void setAbout(String about) {
-		this.about = about;
-	}
-
-	public String getProfileImage() {
-		return profileImage;
-	}
-
-	public void setProfileImage(String profileImage) {
-		this.profileImage = profileImage;
-	}
-
-	public String getBannerImage() {
-		return bannerImage;
-	}
-
-	public void setBannerImage(String bannerImage) {
-		this.bannerImage = bannerImage;
-	}
-
-	public String getLinkedinUrl() {
-		return linkedinUrl;
-	}
-
-	public void setLinkedinUrl(String linkedinUrl) {
-		this.linkedinUrl = linkedinUrl;
-	}
-
-	public String getGithubUrl() {
-		return githubUrl;
-	}
-
-	public void setGithubUrl(String githubUrl) {
-		this.githubUrl = githubUrl;
-	}
-
-	public String getPortfolioUrl() {
-		return portfolioUrl;
-	}
-
-	public void setPortfolioUrl(String portfolioUrl) {
-		this.portfolioUrl = portfolioUrl;
-	}
-
-	public List<String> getSkills() {
-		return skills;
-	}
-
-	public void setSkills(List<String> skills) {
-		this.skills = skills;
-	}
-
-	public List<String> getLanguages() {
-		return languages;
-	}
-
-	public void setLanguages(List<String> languages) {
-		this.languages = languages;
-	}
-
-	public List<Experience> getExperiences() {
-		return experiences;
-	}
-
-	public void setExperiences(List<Experience> experiences) {
-		this.experiences = experiences;
-	}
-
-	public List<Education> getEducations() {
-		return educations;
-	}
-
-	public void setEducations(List<Education> educations) {
-		this.educations = educations;
-	}
-
-	public List<Certification> getCertifications() {
-		return certifications;
-	}
-
-	public void setCertifications(List<Certification> certifications) {
-		this.certifications = certifications;
-	}
-
-	public User getUser() {
-		return user;
-	}
-
-	public void setUser(User user) {
-		this.user = user;
-	}
-
-	public void addExperience(Experience experience) {
+    public void addExperience(Experience experience) {
         experiences.add(experience);
         experience.setProfile(this);
     }
@@ -326,4 +154,63 @@ public class Profile {
         certifications.remove(certification);
         certification.setProfile(null);
     }
+
+    // ── Getters & Setters ────────────────────────────────────────────────────
+
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+
+    public String getHeadline() { return headline; }
+    public void setHeadline(String headline) { this.headline = headline; }
+
+    public String getCurrentCompany() { return currentCompany; }
+    public void setCurrentCompany(String currentCompany) { this.currentCompany = currentCompany; }
+
+    public String getLocation() { return location; }
+    public void setLocation(String location) { this.location = location; }
+
+    public Availability getAvailability() { return availability; }
+    public void setAvailability(Availability availability) { this.availability = availability; }
+
+    public ExperienceLevel getExperienceLevel() { return experienceLevel; }
+    public void setExperienceLevel(ExperienceLevel experienceLevel) { this.experienceLevel = experienceLevel; }
+
+    public List<String> getSkills() { return skills; }
+    public void setSkills(List<String> skills) { this.skills = skills; }
+
+    public List<String> getLanguages() { return languages; }
+    public void setLanguages(List<String> languages) { this.languages = languages; }
+
+    public String getAbout() { return about; }
+    public void setAbout(String about) { this.about = about; }
+
+    public String getProfileImage() { return profileImage; }
+    public void setProfileImage(String profileImage) { this.profileImage = profileImage; }
+
+    public String getBannerImage() { return bannerImage; }
+    public void setBannerImage(String bannerImage) { this.bannerImage = bannerImage; }
+
+    public String getLinkedinUrl() { return linkedinUrl; }
+    public void setLinkedinUrl(String linkedinUrl) { this.linkedinUrl = linkedinUrl; }
+
+    public String getGithubUrl() { return githubUrl; }
+    public void setGithubUrl(String githubUrl) { this.githubUrl = githubUrl; }
+
+    public String getPortfolioUrl() { return portfolioUrl; }
+    public void setPortfolioUrl(String portfolioUrl) { this.portfolioUrl = portfolioUrl; }
+
+    public List<Experience> getExperiences() { return experiences; }
+    public void setExperiences(List<Experience> experiences) { this.experiences = experiences; }
+
+    public List<Education> getEducations() { return educations; }
+    public void setEducations(List<Education> educations) { this.educations = educations; }
+
+    public List<Certification> getCertifications() { return certifications; }
+    public void setCertifications(List<Certification> certifications) { this.certifications = certifications; }
+
+    public Resume getResume() { return resume; }
+    public void setResume(Resume resume) { this.resume = resume; }
+
+    public User getUser() { return user; }
+    public void setUser(User user) { this.user = user; }
 }

@@ -1,61 +1,73 @@
 package com.jobportal.service;
 
+import org.springframework.web.multipart.MultipartFile;
+
+import com.jobportal.dto.request.CertificationRequest;
+import com.jobportal.dto.request.EducationRequest;
+import com.jobportal.dto.request.ExperienceRequest;
+import com.jobportal.dto.request.ProfileAboutRequest;
+import com.jobportal.dto.request.ProfileHeaderRequest;
+import com.jobportal.dto.request.ProfileLinksRequest;
+import com.jobportal.dto.request.ProfileSkillsRequest;
+import com.jobportal.dto.response.CertificationResponse;
+import com.jobportal.dto.response.EducationResponse;
+import com.jobportal.dto.response.ExperienceResponse;
+import com.jobportal.dto.response.ProfileResponse;
+import com.jobportal.exception.JobPortalException;
 
 import java.util.List;
 
-import org.jspecify.annotations.Nullable;
-import org.springframework.web.multipart.MultipartFile;
-
-import com.jobportal.dto.AboutDto;
-import com.jobportal.dto.CertificationDto;
-import com.jobportal.dto.EducationDto;
-import com.jobportal.dto.ExperienceDto;
-import com.jobportal.dto.HeaderDto;
-import com.jobportal.dto.LanguageDto;
-import com.jobportal.dto.LinksDto;
-import com.jobportal.dto.ProfileDTO;
-import com.jobportal.dto.SkillDto;
-import com.jobportal.dto.SkillsDto;
-import com.jobportal.entity.Profile;
-import com.jobportal.exception.JobPortalException;
-
 public interface ProfileService {
 
-	ProfileDTO getProfileByEmail(String email) throws JobPortalException;
-    Profile getProfileForUser(String email) throws JobPortalException;
-	
-    HeaderDto updateHeader(HeaderDto headetdto,Long id) throws JobPortalException;
-	
-	LinksDto updateLinks(LinksDto dto, Long id) throws JobPortalException;
-	
-	AboutDto updateAbout(AboutDto dto, Long id) throws JobPortalException;
-	
-	SkillsDto updateSkills(SkillsDto dto, Long id) throws JobPortalException;
-	
-	SkillDto addSkill(SkillDto dto, Long id) throws JobPortalException;
-	void removeSkill(String skill, Long id) throws JobPortalException;
-	ExperienceDto addExperience(ExperienceDto dto, Long id) throws JobPortalException;
-	
-	ExperienceDto updateExperience(ExperienceDto dto, Long experienceId) throws JobPortalException;
-	void deleteExperience(Long experienceId) throws JobPortalException;
-	EducationDto addEducation(EducationDto dto, Long id) throws JobPortalException;
-	void deleteEducation(Long educationId) throws JobPortalException;
-	List<EducationDto> getEducation(Long id) throws JobPortalException;
-	List<ExperienceDto> getExperiences(Long id) throws JobPortalException;
-	CertificationDto addCertification(CertificationDto dto, Long id) throws JobPortalException;
+    ProfileResponse getMyProfile(String email) throws JobPortalException;
 
-	CertificationDto updateCertification(CertificationDto dto, Long certificationId) throws JobPortalException;
+    ProfileResponse getProfileByEmail(String email) throws JobPortalException;
 
-	void deleteCertification(Long certificationId) throws JobPortalException;
+    ProfileResponse updateHeader(ProfileHeaderRequest request, String email) throws JobPortalException;
 
-	List<CertificationDto> getCertifications(Long id) throws JobPortalException;
-	LanguageDto addLanguage(LanguageDto dto, Long id) throws JobPortalException;
-	void removeLanguage(String language, Long id) throws JobPortalException;
-	List<String> getLanguages(Long id) throws JobPortalException;
-	String updateProfileImage(MultipartFile file, Long profileId) throws Exception;
-	String updateBannerImage(MultipartFile file, Long profileId) throws Exception;
-	
-	
-	
-    
+    ProfileResponse updateLinks(ProfileLinksRequest request, String email) throws JobPortalException;
+
+    ProfileResponse updateAbout(ProfileAboutRequest request, String email) throws JobPortalException;
+
+    ProfileResponse updateSkills(ProfileSkillsRequest request, String email) throws JobPortalException;
+
+    ProfileResponse addSkill(String skill, String email) throws JobPortalException;
+
+    ProfileResponse removeSkill(String skill, String email) throws JobPortalException;
+
+    ExperienceResponse addExperience(ExperienceRequest request, String email) throws JobPortalException;
+
+    ExperienceResponse updateExperience(Long experienceId, ExperienceRequest request, String email) throws JobPortalException;
+
+    void deleteExperience(Long experienceId, String email) throws JobPortalException;
+
+    List<ExperienceResponse> getExperiences(String email) throws JobPortalException;
+
+    EducationResponse addEducation(EducationRequest request, String email) throws JobPortalException;
+
+    EducationResponse updateEducation(Long educationId, EducationRequest request, String email) throws JobPortalException;
+
+    void deleteEducation(Long educationId, String email) throws JobPortalException;
+
+    List<EducationResponse> getEducations(String email) throws JobPortalException;
+
+    CertificationResponse addCertification(CertificationRequest request, String email) throws JobPortalException;
+
+    CertificationResponse updateCertification(Long certificationId, CertificationRequest request, String email) throws JobPortalException;
+
+    void deleteCertification(Long certificationId, String email) throws JobPortalException;
+
+    List<CertificationResponse> getCertifications(String email) throws JobPortalException;
+
+    ProfileResponse addLanguage(String language, String email) throws JobPortalException;
+
+    ProfileResponse removeLanguage(String language, String email) throws JobPortalException;
+
+    ProfileResponse updateProfileImage(MultipartFile file, String email) throws Exception;
+
+    ProfileResponse updateBannerImage(MultipartFile file, String email) throws Exception;
+
+    ProfileResponse uploadResume(MultipartFile file, String email) throws Exception;
+
+    void deleteResume(String email) throws JobPortalException;
 }

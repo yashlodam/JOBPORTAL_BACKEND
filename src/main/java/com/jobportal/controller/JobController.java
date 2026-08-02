@@ -2,7 +2,9 @@ package com.jobportal.controller;
 
 import java.util.List;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -16,169 +18,245 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.jobportal.dto.JobRequestDTO;
-import com.jobportal.dto.JobResponseDTO;
+import com.jobportal.domain.ExperienceLevel;
+import com.jobportal.domain.JobType;
+import com.jobportal.domain.WorkingMode;
+import com.jobportal.dto.request.JobFilterRequest;
+import com.jobportal.dto.request.JobRequest;
+import com.jobportal.dto.response.ApiResponse;
+import com.jobportal.dto.response.CategoryResponse;
+import com.jobportal.dto.response.JobDetailResponse;
+import com.jobportal.dto.response.JobSummaryResponse;
+import com.jobportal.dto.response.WorkModeResponse;
 import com.jobportal.exception.JobPortalException;
 import com.jobportal.service.JobService;
 
 import jakarta.validation.Valid;
 
+/**
+ * Job REST controller.
+ *
+ * <h3>Design decisions</h3>
+ *
+ * <h4>POST /api/jobs/filter (not GET with body)</h4>
+ * <p>HTTP GET with a request body is technically undefined by the HTTP spec and
+ * is not supported by many HTTP clients, proxies, and load balancers. The filter
+ * endpoint uses POST to carry the filter criteria in the request body.
+ * The Pageable parameters (page, size, sort) are passed as query params
+ * — handled automatically by Spring's {@code HandlerMethodArgumentResolver}.</p>
+ *
+ * <h4>Wildcard return types removed</h4>
+ * <p>{@code ApiResponse<?>} breaks API documentation tools (OpenAPI/Swagger)
+ * and client code generators. All endpoints now have fully typed returns.</p>
+ *
+ * <h4>createJob / updateJob return JobDetailResponse</h4>
+ * <p>Returning the full detail after a write avoids a redundant follow-up GET
+ * from the client. The cost is one extra re-fetch query in the service, which
+ * is acceptable for write operations.</p>
+ */
 @RestController
-@RequestMapping("/jobs")
+@RequestMapping("/api/jobs")
 public class JobController {
 
-	@Autowired
-	private JobService jobService;
-	
-	@PostMapping
-	public ResponseEntity<JobResponseDTO> createJob(
-	        @Valid @RequestBody JobRequestDTO dto,
-	        Authentication authentication)
-	        throws JobPortalException {
+    private final JobService jobService;
 
-	    String email = authentication.getName();
+    public JobController(JobService jobService) {
+        this.jobService = jobService;
+    }
 
-	    return ResponseEntity.status(HttpStatus.CREATED)
-	            .body(jobService.createJob(dto, email));
-	}
-	
-	
-	@PutMapping("/{jobId}")
-	public ResponseEntity<JobResponseDTO> updateJob(
-	        @PathVariable Long jobId,
-	        @Valid @RequestBody JobRequestDTO dto,
-	        Authentication authentication)
-	        throws JobPortalException {
+    // ── Write Endpoints (Authenticated Recruiter) ─────────────────────────────
 
-	    String email = authentication.getName();
+    @PostMapping
+    public ResponseEntity<ApiResponse<JobDetailResponse>> createJob(
+            @Valid @RequestBody JobRequest dto,
+            Authentication authentication) throws JobPortalException {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Job posted successfully",
+                        jobService.createJob(dto, authentication.getName())));
+    }
 
-	    return ResponseEntity.ok(
-	            jobService.updateJob(jobId, dto, email));
-	}
-	
-	
-	@DeleteMapping("/{jobId}")
-	public ResponseEntity<String> deleteJob(
-	        @PathVariable Long jobId,
-	        Authentication authentication)
-	        throws JobPortalException {
+    @PutMapping("/{jobId}")
+    public ResponseEntity<ApiResponse<JobDetailResponse>> updateJob(
+            @PathVariable Long jobId,
+            @Valid @RequestBody JobRequest dto,
+            Authentication authentication) throws JobPortalException {
+        return ResponseEntity.ok(ApiResponse.success("Job updated successfully",
+                jobService.updateJob(jobId, dto, authentication.getName())));
+    }
 
-	    String email = authentication.getName();
+    @DeleteMapping("/{jobId}")
+    public ResponseEntity<ApiResponse<Void>> deleteJob(
+            @PathVariable Long jobId,
+            Authentication authentication) throws JobPortalException {
+        jobService.deleteJob(jobId, authentication.getName());
+        return ResponseEntity.ok(ApiResponse.message("Job deleted successfully"));
+    }
 
-	    jobService.deleteJob(jobId, email);
+    // ── Recruiter: My Jobs ────────────────────────────────────────────────────
 
-	    return ResponseEntity.ok("Job deleted successfully.");
-	}
-	
-	
-	@GetMapping("/{jobId}")
-	public ResponseEntity<JobResponseDTO> getJobById(
-	        @PathVariable Long jobId)
-	        throws JobPortalException {
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponse<Page<JobSummaryResponse>>> getMyJobs(
+            Authentication authentication,
+            @PageableDefault(size = 10, sort = "createdAt") Pageable pageable)
+            throws JobPortalException {
+        return ResponseEntity.ok(ApiResponse.success(
+                jobService.getMyJobs(authentication.getName(), pageable)));
+    }
 
-	    return ResponseEntity.ok(
-	            jobService.getJobById(jobId));
-	}
-	
-	
-	@GetMapping
-	public ResponseEntity<List<JobResponseDTO>> getAllJobs() {
+    // ── Public Read Endpoints ─────────────────────────────────────────────────
 
-	    return ResponseEntity.ok(
-	            jobService.getAllJobs());
-	}
-	
-	
-	@GetMapping("/me")
-	public ResponseEntity<List<JobResponseDTO>> getMyJobs(
-	        Authentication authentication)
-	        throws JobPortalException {
+    @GetMapping
+    public ResponseEntity<ApiResponse<Page<JobSummaryResponse>>> getAllJobs(
+            @PageableDefault(size = 10, sort = "createdAt") Pageable pageable) {
+        return ResponseEntity.ok(ApiResponse.success(jobService.getAllJobs(pageable)));
+    }
 
-	    String email = authentication.getName();
+    @GetMapping("/{jobId}")
+    public ResponseEntity<ApiResponse<JobDetailResponse>> getJobById(
+            @PathVariable Long jobId) throws JobPortalException {
+        return ResponseEntity.ok(ApiResponse.success(jobService.getJobById(jobId)));
+    }
 
-	    return ResponseEntity.ok(
-	            jobService.getMyJobs(email));
-	}
-	
-	
-	@GetMapping("/search")
-	public ResponseEntity<List<JobResponseDTO>> searchJobs(
-	        @RequestParam String keyword) {
+    /**
+     * Increments view count and returns the full job detail.
+     * Whitelisted as public in SecurityConfig.
+     */
+    @PostMapping("/{jobId}/view")
+    public ResponseEntity<ApiResponse<JobDetailResponse>> viewJob(
+            @PathVariable Long jobId) throws JobPortalException {
+        return ResponseEntity.ok(ApiResponse.success(jobService.incrementViewAndGet(jobId)));
+    }
 
-	    return ResponseEntity.ok(
-	            jobService.searchJobs(keyword));
-	}
-	
-	
-	@GetMapping("/filter")
-	public ResponseEntity<List<JobResponseDTO>> filterJobs(
+    @GetMapping("/search")
+    public ResponseEntity<ApiResponse<Page<JobSummaryResponse>>> searchJobs(
 
-	        @RequestParam(required = false) String location,
+            @RequestParam(required = false) String keyword,
 
-	        @RequestParam(required = false) String jobType,
+            @RequestParam(required = false) String city,
 
-	        @RequestParam(required = false) String workingMode,
+            @RequestParam(required = false) String state,
 
-	        @RequestParam(required = false) String experienceLevel,
+            @RequestParam(required = false) String country,
 
-	        @RequestParam(required = false) Long minimumSalary,
+            @RequestParam(required = false) JobType jobType,
 
-	        @RequestParam(required = false) Long maximumSalary) {
+            @RequestParam(required = false) WorkingMode workingMode,
 
-	    return ResponseEntity.ok(
-	            jobService.filterJobs(
-	                    location,
-	                    jobType,
-	                    workingMode,
-	                    experienceLevel,
-	                    minimumSalary,
-	                    maximumSalary));
-	}
-	
-	@GetMapping("/company/{companyId}")
-	public ResponseEntity<List<JobResponseDTO>> getCompanyJobs(
-	        @PathVariable Long companyId)
-	        throws JobPortalException {
+            @RequestParam(required = false) ExperienceLevel experienceLevel,
 
-	    return ResponseEntity.ok(
-	            jobService.getCompanyJobs(companyId));
-	}
-	
-	
-	
-	@GetMapping("/category/{category}")
-	public ResponseEntity<List<JobResponseDTO>> getJobsByCategory(
-	        @PathVariable String category)
-	        throws JobPortalException {
+            @RequestParam(required = false) Long minimumSalary,
 
-	    return ResponseEntity.ok(jobService.getJobsByCategory(category));
-	}
-	
-	
-	
-	@GetMapping("/latest")
-	public ResponseEntity<List<JobResponseDTO>> latestJobs() {
+            @RequestParam(required = false) Long maximumSalary,
 
-	    return ResponseEntity.ok(
-	            jobService.latestJobs());
-	}
-	
-	
-	@GetMapping("/featured")
-	public ResponseEntity<List<JobResponseDTO>> featuredJobs() {
+            @RequestParam(required = false) List<String> skills,
 
-	    return ResponseEntity.ok(
-	            jobService.featuredJobs());
-	}
-	
-	
-	
-	@GetMapping("/{jobId}/similar")
-	public ResponseEntity<List<JobResponseDTO>> similarJobs(
-	        @PathVariable Long jobId)
-	        throws JobPortalException {
+            @RequestParam(required = false) String category,
 
-	    return ResponseEntity.ok(
-	            jobService.similarJobs(jobId));
-	}
+            @RequestParam(required = false) String qualification,
+
+            @RequestParam(required = false) Boolean featured,
+
+            @RequestParam(required = false) Boolean urgentHiring,
+
+            @RequestParam(required = false) Boolean easyApply,
+
+            @PageableDefault(size = 10, sort = "createdAt")
+            Pageable pageable) {
+    	
+    	{
+
+            JobFilterRequest filter = new JobFilterRequest();
+
+            filter.setKeyword(keyword);
+            filter.setCity(city);
+            filter.setState(state);
+            filter.setCountry(country);
+            filter.setJobType(jobType);
+            filter.setWorkingMode(workingMode);
+            filter.setExperienceLevel(experienceLevel);
+            filter.setMinimumSalary(minimumSalary);
+            filter.setMaximumSalary(maximumSalary);
+            filter.setSkills(skills);
+            filter.setCategory(category);
+            filter.setQualification(qualification);
+            filter.setFeatured(featured);
+            filter.setUrgentHiring(urgentHiring);
+            filter.setEasyApply(easyApply);
+
+            return ResponseEntity.ok(
+                    ApiResponse.success(
+                            jobService.filterJobs(filter, pageable)
+                    )
+            );
+        }
+    }
+
+    /**
+     * Advanced filter endpoint. Uses POST (not GET) because complex filter
+     * objects with lists (skills, etc.) are not reliably passed as GET query params.
+     * Pageable (page, size, sort) is resolved from query params by Spring.
+     *
+     * Example: POST /api/jobs/filter?page=0&size=10&sort=createdAt,desc
+     */
+    @PostMapping("/filter")
+    public ResponseEntity<ApiResponse<Page<JobSummaryResponse>>> filterJobs(
+            @RequestBody(required = false) JobFilterRequest request,
+            @PageableDefault(size = 10, sort = "createdAt") Pageable pageable) {
+        if (request == null) request = new JobFilterRequest();
+        return ResponseEntity.ok(ApiResponse.success(
+                jobService.filterJobs(request, pageable)));
+    }
+
+    @GetMapping("/company/{companyId}")
+    public ResponseEntity<ApiResponse<Page<JobSummaryResponse>>> getCompanyJobs(
+            @PathVariable Long companyId,
+            @PageableDefault(size = 10, sort = "createdAt") Pageable pageable)
+            throws JobPortalException {
+        return ResponseEntity.ok(ApiResponse.success(
+                jobService.getCompanyJobs(companyId, pageable)));
+    }
+
+    @GetMapping("/category/{category}")
+    public ResponseEntity<ApiResponse<Page<JobSummaryResponse>>> getJobsByCategory(
+            @PathVariable String category,
+            @PageableDefault(size = 10, sort = "createdAt") Pageable pageable) {
+        return ResponseEntity.ok(ApiResponse.success(
+                jobService.getJobsByCategory(category, pageable)));
+    }
+    
+    @GetMapping("/categories")
+    public ResponseEntity<ApiResponse<List<CategoryResponse>>> getCategories() {
+
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        jobService.getCategories()
+                )
+        );
+    }
+    @GetMapping("/work-modes")
+    public ResponseEntity<ApiResponse<List<WorkModeResponse>>> getWorkModes() {
+
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        jobService.getWorkModes()
+                )
+        );
+    }
+
+    @GetMapping("/latest")
+    public ResponseEntity<ApiResponse<List<JobSummaryResponse>>> latestJobs() {
+        return ResponseEntity.ok(ApiResponse.success(jobService.latestJobs()));
+    }
+
+    @GetMapping("/featured")
+    public ResponseEntity<ApiResponse<Page<JobSummaryResponse>>> featuredJobs(
+            @PageableDefault(size = 10) Pageable pageable) {
+        return ResponseEntity.ok(ApiResponse.success(jobService.featuredJobs(pageable)));
+    }
+
+    @GetMapping("/{jobId}/similar")
+    public ResponseEntity<ApiResponse<List<JobSummaryResponse>>> similarJobs(
+            @PathVariable Long jobId) throws JobPortalException {
+        return ResponseEntity.ok(ApiResponse.success(jobService.similarJobs(jobId)));
+    }
 }

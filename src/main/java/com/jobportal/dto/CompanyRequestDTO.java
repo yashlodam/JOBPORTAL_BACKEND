@@ -18,6 +18,8 @@ public class CompanyRequestDTO {
     private String industry;
 
     private String companySize;
+    
+    
 
     private String headquarters;
 

@@ -1,75 +1,57 @@
 package com.jobportal.entity;
 
+import com.jobportal.domain.RecruiterStatus;
+
+import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToOne;
+import jakarta.persistence.Table;
 
 @Entity
-public class Recruiter {
+@Table(name = "recruiters")
+public class Recruiter extends Auditable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @OneToOne
-    @JoinColumn(name = "user_id")
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "company_id")
     private Company company;
 
     private String designation;
 
-	public Long getId() {
-		return id;
-	}
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private RecruiterStatus status = RecruiterStatus.ACTIVE;
 
-	public void setId(Long id) {
-		this.id = id;
-	}
+    public Recruiter() {
+    }
 
-	public User getUser() {
-		return user;
-	}
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
 
-	public void setUser(User user) {
-		this.user = user;
-	}
+    public User getUser() { return user; }
+    public void setUser(User user) { this.user = user; }
 
-	public Company getCompany() {
-		return company;
-	}
+    public Company getCompany() { return company; }
+    public void setCompany(Company company) { this.company = company; }
 
-	public void setCompany(Company company) {
-		this.company = company;
-	}
+    public String getDesignation() { return designation; }
+    public void setDesignation(String designation) { this.designation = designation; }
 
-	public String getDesignation() {
-		return designation;
-	}
-
-	public void setDesignation(String designation) {
-		this.designation = designation;
-	}
-
-	public Recruiter(Long id, User user, Company company, String designation) {
-		super();
-		this.id = id;
-		this.user = user;
-		this.company = company;
-		this.designation = designation;
-	}
-
-	public Recruiter() {
-		// TODO Auto-generated constructor stub
-	}
-
-	
-    
-    
+    public RecruiterStatus getStatus() { return status; }
+    public void setStatus(RecruiterStatus status) { this.status = status; }
 }

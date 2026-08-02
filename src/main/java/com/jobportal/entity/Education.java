@@ -2,112 +2,62 @@ package com.jobportal.entity;
 
 import java.time.LocalDate;
 
-import com.fasterxml.jackson.annotation.JsonBackReference;
-
-import jakarta.persistence.*;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
 
 @Entity
 @Table(name = "educations")
-public class Education {
+public class Education extends Auditable {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     private String degree;
-
     private String collegeName;
-
     private String university;
-
     private LocalDate startDate;
-
     private LocalDate endDate;
-
     private String location;
+    private String fieldOfStudy;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "profile_id")
-    @JsonBackReference
     private Profile profile;
 
     public Education() {
     }
 
-    public Education(Long id, String degree, String collegeName, String university,
-                     LocalDate startDate, LocalDate endDate,
-                     String location, Profile profile) {
-        this.id = id;
-        this.degree = degree;
-        this.collegeName = collegeName;
-        this.university = university;
-        this.startDate = startDate;
-        this.endDate = endDate;
-        this.location = location;
-        this.profile = profile;
-    }
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
 
-    public Long getId() {
-        return id;
-    }
+    public String getDegree() { return degree; }
+    public void setDegree(String degree) { this.degree = degree; }
 
-    public void setId(Long id) {
-        this.id = id;
-    }
+    public String getCollegeName() { return collegeName; }
+    public void setCollegeName(String collegeName) { this.collegeName = collegeName; }
 
-    public String getDegree() {
-        return degree;
-    }
+    public String getUniversity() { return university; }
+    public void setUniversity(String university) { this.university = university; }
 
-    public void setDegree(String degree) {
-        this.degree = degree;
-    }
+    public LocalDate getStartDate() { return startDate; }
+    public void setStartDate(LocalDate startDate) { this.startDate = startDate; }
 
-    public String getCollegeName() {
-        return collegeName;
-    }
+    public LocalDate getEndDate() { return endDate; }
+    public void setEndDate(LocalDate endDate) { this.endDate = endDate; }
 
-    public void setCollegeName(String collegeName) {
-        this.collegeName = collegeName;
-    }
+    public String getLocation() { return location; }
+    public void setLocation(String location) { this.location = location; }
 
-    public String getUniversity() {
-        return university;
-    }
+    public String getFieldOfStudy() { return fieldOfStudy; }
+    public void setFieldOfStudy(String fieldOfStudy) { this.fieldOfStudy = fieldOfStudy; }
 
-    public void setUniversity(String university) {
-        this.university = university;
-    }
-
-    public LocalDate getStartDate() {
-        return startDate;
-    }
-
-    public void setStartDate(LocalDate startDate) {
-        this.startDate = startDate;
-    }
-
-    public LocalDate getEndDate() {
-        return endDate;
-    }
-
-    public void setEndDate(LocalDate endDate) {
-        this.endDate = endDate;
-    }
-
-    public String getLocation() {
-        return location;
-    }
-
-    public void setLocation(String location) {
-        this.location = location;
-    }
-
-    public Profile getProfile() {
-        return profile;
-    }
-
-    public void setProfile(Profile profile) {
-        this.profile = profile;
-    }
+    public Profile getProfile() { return profile; }
+    public void setProfile(Profile profile) { this.profile = profile; }
 }

@@ -2,282 +2,272 @@ package com.jobportal.controller;
 
 import java.util.List;
 
-
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.jobportal.dto.AboutDto;
-import com.jobportal.dto.CertificationDto;
-import com.jobportal.dto.EducationDto;
-import com.jobportal.dto.ExperienceDto;
-import com.jobportal.dto.HeaderDto;
-import com.jobportal.dto.LanguageDto;
-import com.jobportal.dto.LinksDto;
-import com.jobportal.dto.ProfileDTO;
-import com.jobportal.dto.SkillDto;
-import com.jobportal.dto.SkillsDto;
-import com.jobportal.dto.UserDTO;
-import com.jobportal.entity.Profile;
+import com.jobportal.dto.request.CertificationRequest;
+import com.jobportal.dto.request.EducationRequest;
+import com.jobportal.dto.request.ExperienceRequest;
+import com.jobportal.dto.request.ProfileAboutRequest;
+import com.jobportal.dto.request.ProfileHeaderRequest;
+import com.jobportal.dto.request.ProfileLinksRequest;
+import com.jobportal.dto.request.ProfileSkillsRequest;
+import com.jobportal.dto.response.ApiResponse;
+import com.jobportal.dto.response.CertificationResponse;
+import com.jobportal.dto.response.EducationResponse;
+import com.jobportal.dto.response.ExperienceResponse;
+import com.jobportal.dto.response.ProfileResponse;
 import com.jobportal.exception.JobPortalException;
 import com.jobportal.service.ProfileService;
-import com.jobportal.service.UserService;
 
+import jakarta.validation.Valid;
+
+/**
+ * Profile controller — all mutation endpoints derive user identity from JWT.
+ * No client-supplied profile IDs accepted for mutations (IDOR prevention).
+ */
 @RestController
-@RequestMapping("/profile")
+@RequestMapping("/api/profile")
 public class ProfileController {
 
-	@Autowired
-	public ProfileService profileService;
-	
-	@Autowired
-	public UserService userService;
-	
-	@GetMapping()
-	public ResponseEntity<UserDTO> getUserProfile(
-	        @RequestHeader("Authorization") String jwt)
-	        throws JobPortalException {
+    private final ProfileService profileService;
 
-	    return ResponseEntity.ok(userService.getUserProfile(jwt));
-	}
-	
-	
-	@GetMapping("/{email}")
-	public ResponseEntity<ProfileDTO> getProfileByEmail(@PathVariable String email) throws JobPortalException{
-		
-		ProfileDTO dto = profileService.getProfileByEmail(email);
-		
-		return new ResponseEntity<>(dto,HttpStatus.OK);
-		
-	}
-	
-	
-	
-	@PutMapping("/profile-image/{id}")
-	public ResponseEntity<String> updateProfileImage(
-	        @RequestParam("file") MultipartFile file,
-	        @PathVariable Long id) throws Exception {
+    public ProfileController(ProfileService profileService) {
+        this.profileService = profileService;
+    }
 
-	    return ResponseEntity.ok(profileService.updateProfileImage(file, id));
-	}
-	
-	
-	@PutMapping("/banner-image/{id}")
-	public ResponseEntity<String> updateBannerImage(
-	        @RequestParam("file") MultipartFile file,
-	        @PathVariable Long id) throws Exception {
+    // ── My Profile ───────────────────────────────────────────────────────────
 
-	    return ResponseEntity.ok(profileService.updateBannerImage(file, id));
-	}
-	
-	@GetMapping("/user/{email}")
-	public ResponseEntity<Profile> getProfileForUser(@PathVariable String email) throws JobPortalException{
-		
-		return new ResponseEntity<>(profileService.getProfileForUser(email),HttpStatus.OK);
-	}
-	
-	@PutMapping("/header/{id}")
-	public ResponseEntity<HeaderDto> updateHeader(@RequestBody HeaderDto dto , @PathVariable Long id) throws JobPortalException{
-		
-		
-		
-		return new ResponseEntity<>(profileService.updateHeader(dto, id),HttpStatus.OK);
-	}
-	
-	@PutMapping("/links/{id}")
-	public ResponseEntity<LinksDto> updateLinks(
-	        @RequestBody LinksDto dto,
-	        @PathVariable Long id) throws JobPortalException {
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponse<ProfileResponse>> getMyProfile(
+            Authentication authentication) throws JobPortalException {
+        return ResponseEntity.ok(ApiResponse.success(
+                profileService.getMyProfile(authentication.getName())));
+    }
 
-	    return ResponseEntity.ok(profileService.updateLinks(dto, id));
-	}
-	
-	
-	@PutMapping("/about/{id}")
-	public ResponseEntity<AboutDto> updateAbout(
-	        @RequestBody AboutDto dto,
-	        @PathVariable Long id) throws JobPortalException {
+    @GetMapping("/{email}")
+    public ResponseEntity<ApiResponse<ProfileResponse>> getProfileByEmail(
+            @PathVariable String email) throws JobPortalException {
+        return ResponseEntity.ok(ApiResponse.success(
+                profileService.getProfileByEmail(email)));
+    }
 
-	    return ResponseEntity.ok(profileService.updateAbout(dto, id));
-	}
-	
-	@PutMapping("/skills/{id}")
-	public ResponseEntity<SkillsDto> updateSkills(
-	        @RequestBody SkillsDto dto,
-	        @PathVariable Long id) throws JobPortalException {
+    // ── Header & Links ───────────────────────────────────────────────────────
 
-	    return ResponseEntity.ok(profileService.updateSkills(dto, id));
-	}
-	
-	
-	@PostMapping("/skill/{id}")
-	public ResponseEntity<SkillDto> addSkill(
-	        @RequestBody SkillDto dto,
-	        @PathVariable Long id) throws JobPortalException {
+    @PutMapping("/me/header")
+    public ResponseEntity<ApiResponse<ProfileResponse>> updateHeader(
+            @RequestBody ProfileHeaderRequest request,
+            Authentication authentication) throws JobPortalException {
+        return ResponseEntity.ok(ApiResponse.success("Header updated",
+                profileService.updateHeader(request, authentication.getName())));
+    }
 
-	    return ResponseEntity.status(HttpStatus.CREATED)
-	            .body(profileService.addSkill(dto, id));
-	}
-	
-	@DeleteMapping("/skills/{id}")
-	public ResponseEntity<?> removeSkill(
-	        @PathVariable Long id,
-	        @RequestParam String skill) throws JobPortalException {
+    @PutMapping("/me/links")
+    public ResponseEntity<ApiResponse<ProfileResponse>> updateLinks(
+            @RequestBody ProfileLinksRequest request,
+            Authentication authentication) throws JobPortalException {
+        return ResponseEntity.ok(ApiResponse.success("Links updated",
+                profileService.updateLinks(request, authentication.getName())));
+    }
 
-	    profileService.removeSkill(skill, id);
+    @PutMapping("/me/about")
+    public ResponseEntity<ApiResponse<ProfileResponse>> updateAbout(
+            @RequestBody ProfileAboutRequest request,
+            Authentication authentication) throws JobPortalException {
+        return ResponseEntity.ok(ApiResponse.success("About updated",
+                profileService.updateAbout(request, authentication.getName())));
+    }
 
-	    return ResponseEntity.ok().build();
-	}
-	
-	
-	@PostMapping("/experience/{id}")
-	public ResponseEntity<ExperienceDto> addExperience(
-	        @RequestBody ExperienceDto dto,
-	        @PathVariable Long id) throws JobPortalException {
+    // ── Skills ────────────────────────────────────────────────────────────────
 
-	    return new ResponseEntity<>(
-	            profileService.addExperience(dto, id),
-	            HttpStatus.CREATED
-	    );
-	}
-	
-	
-	@PutMapping("/experience/{experienceId}")
-	public ResponseEntity<ExperienceDto> updateExperience(
-	        @RequestBody ExperienceDto dto,
-	        @PathVariable Long experienceId) throws JobPortalException {
+    @PutMapping("/me/skills")
+    public ResponseEntity<ApiResponse<ProfileResponse>> updateSkills(
+            @RequestBody ProfileSkillsRequest request,
+            Authentication authentication) throws JobPortalException {
+        return ResponseEntity.ok(ApiResponse.success("Skills updated",
+                profileService.updateSkills(request, authentication.getName())));
+    }
 
-	    return ResponseEntity.ok(
-	            profileService.updateExperience(dto, experienceId)
-	    );
-	}
-	
-	@GetMapping("/experience/{id}")
-	public ResponseEntity<List<ExperienceDto>> getExperiences(
-	        @PathVariable Long id) throws JobPortalException {
+    @PostMapping("/me/skills")
+    public ResponseEntity<ApiResponse<ProfileResponse>> addSkill(
+            @RequestParam String skill,
+            Authentication authentication) throws JobPortalException {
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success("Skill added",
+                profileService.addSkill(skill, authentication.getName())));
+    }
 
-	    return ResponseEntity.ok(
-	            profileService.getExperiences(id));
-	}
-	
-	@DeleteMapping("/experience/{experienceId}")
-	public ResponseEntity<String> deleteExperience(
-	        @PathVariable Long experienceId) throws JobPortalException {
+    @DeleteMapping("/me/skills")
+    public ResponseEntity<ApiResponse<ProfileResponse>> removeSkill(
+            @RequestParam String skill,
+            Authentication authentication) throws JobPortalException {
+        return ResponseEntity.ok(ApiResponse.success("Skill removed",
+                profileService.removeSkill(skill, authentication.getName())));
+    }
 
-	    profileService.deleteExperience(experienceId);
+    // ── Experience ───────────────────────────────────────────────────────────
 
-	    return ResponseEntity.ok("Experience deleted successfully.");
-	}
-	
-	@PostMapping("/education/{id}")
-	public ResponseEntity<EducationDto> addEducation(
-	        @RequestBody EducationDto dto,
-	        @PathVariable Long id) throws JobPortalException {
+    @PostMapping("/me/experiences")
+    public ResponseEntity<ApiResponse<ExperienceResponse>> addExperience(
+            @Valid @RequestBody ExperienceRequest request,
+            Authentication authentication) throws JobPortalException {
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success("Experience added",
+                profileService.addExperience(request, authentication.getName())));
+    }
 
-	    return new ResponseEntity<>(
-	            profileService.addEducation(dto, id),
-	            HttpStatus.CREATED);
-	}
-	
-	
-	@DeleteMapping("/education/{educationId}")
-	public ResponseEntity<String> deleteEducation(
-	        @PathVariable Long educationId) throws JobPortalException {
+    @PutMapping("/me/experiences/{experienceId}")
+    public ResponseEntity<ApiResponse<ExperienceResponse>> updateExperience(
+            @PathVariable Long experienceId,
+            @Valid @RequestBody ExperienceRequest request,
+            Authentication authentication) throws JobPortalException {
+        return ResponseEntity.ok(ApiResponse.success("Experience updated",
+                profileService.updateExperience(experienceId, request, authentication.getName())));
+    }
 
-	    profileService.deleteEducation(educationId);
+    @DeleteMapping("/me/experiences/{experienceId}")
+    public ResponseEntity<ApiResponse<Void>> deleteExperience(
+            @PathVariable Long experienceId,
+            Authentication authentication) throws JobPortalException {
+        profileService.deleteExperience(experienceId, authentication.getName());
+        return ResponseEntity.ok(ApiResponse.message("Experience deleted"));
+    }
 
-	    return ResponseEntity.ok("Education deleted successfully.");
-	}
-	
-	
-	@GetMapping("/education/{id}")
-	public ResponseEntity<List<EducationDto>> getEducation(
-	        @PathVariable Long id) throws JobPortalException {
+    @GetMapping("/me/experiences")
+    public ResponseEntity<ApiResponse<List<ExperienceResponse>>> getExperiences(
+            Authentication authentication) throws JobPortalException {
+        return ResponseEntity.ok(ApiResponse.success(
+                profileService.getExperiences(authentication.getName())));
+    }
 
-	    return ResponseEntity.ok(
-	            profileService.getEducation(id));
-	}
-	
-	
-	@PostMapping("/certification/{id}")
-	public ResponseEntity<CertificationDto> addCertification(
-	        @RequestBody CertificationDto dto,
-	        @PathVariable Long id) throws JobPortalException {
+    // ── Education ────────────────────────────────────────────────────────────
 
-	    return new ResponseEntity<>(
-	            profileService.addCertification(dto, id),
-	            HttpStatus.CREATED);
-	}
-	
-	
-	@PutMapping("/certification/{certificationId}")
-	public ResponseEntity<CertificationDto> updateCertification(
-	        @RequestBody CertificationDto dto,
-	        @PathVariable Long certificationId) throws JobPortalException {
+    @PostMapping("/me/educations")
+    public ResponseEntity<ApiResponse<EducationResponse>> addEducation(
+            @Valid @RequestBody EducationRequest request,
+            Authentication authentication) throws JobPortalException {
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success("Education added",
+                profileService.addEducation(request, authentication.getName())));
+    }
 
-	    return ResponseEntity.ok(
-	            profileService.updateCertification(dto, certificationId));
-	}
-	
-	
-	@DeleteMapping("/certification/{certificationId}")
-	public ResponseEntity<String> deleteCertification(
-	        @PathVariable Long certificationId) throws JobPortalException {
+    @PutMapping("/me/educations/{educationId}")
+    public ResponseEntity<ApiResponse<EducationResponse>> updateEducation(
+            @PathVariable Long educationId,
+            @Valid @RequestBody EducationRequest request,
+            Authentication authentication) throws JobPortalException {
+        return ResponseEntity.ok(ApiResponse.success("Education updated",
+                profileService.updateEducation(educationId, request, authentication.getName())));
+    }
 
-	    profileService.deleteCertification(certificationId);
+    @DeleteMapping("/me/educations/{educationId}")
+    public ResponseEntity<ApiResponse<Void>> deleteEducation(
+            @PathVariable Long educationId,
+            Authentication authentication) throws JobPortalException {
+        profileService.deleteEducation(educationId, authentication.getName());
+        return ResponseEntity.ok(ApiResponse.message("Education deleted"));
+    }
 
-	    return ResponseEntity.ok("Certification deleted successfully.");
-	}
-	
-	
-	@GetMapping("/certification/{id}")
-	public ResponseEntity<List<CertificationDto>> getCertifications(
-	        @PathVariable Long id) throws JobPortalException {
+    @GetMapping("/me/educations")
+    public ResponseEntity<ApiResponse<List<EducationResponse>>> getEducations(
+            Authentication authentication) throws JobPortalException {
+        return ResponseEntity.ok(ApiResponse.success(
+                profileService.getEducations(authentication.getName())));
+    }
 
-	    return ResponseEntity.ok(
-	            profileService.getCertifications(id));
-	}
-	
-	
-	
-	
-	@PostMapping("/languages/{id}")
-	public ResponseEntity<LanguageDto> addLanguage(
-	        @RequestBody LanguageDto dto,
-	        @PathVariable Long id) throws JobPortalException {
+    // ── Certification ─────────────────────────────────────────────────────────
 
-	    return new ResponseEntity<>(
-	            profileService.addLanguage(dto, id),
-	            HttpStatus.CREATED);
-	}
-	
-	@DeleteMapping("/languages/{id}")
-	public ResponseEntity<String> removeLanguage(
-	        @RequestParam String language,
-	        @PathVariable Long id) throws JobPortalException {
+    @PostMapping("/me/certifications")
+    public ResponseEntity<ApiResponse<CertificationResponse>> addCertification(
+            @Valid @RequestBody CertificationRequest request,
+            Authentication authentication) throws JobPortalException {
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success("Certification added",
+                profileService.addCertification(request, authentication.getName())));
+    }
 
-	    profileService.removeLanguage(language, id);
+    @PutMapping("/me/certifications/{certificationId}")
+    public ResponseEntity<ApiResponse<CertificationResponse>> updateCertification(
+            @PathVariable Long certificationId,
+            @Valid @RequestBody CertificationRequest request,
+            Authentication authentication) throws JobPortalException {
+        return ResponseEntity.ok(ApiResponse.success("Certification updated",
+                profileService.updateCertification(certificationId, request, authentication.getName())));
+    }
 
-	    return ResponseEntity.ok("Language removed successfully.");
-	}
-	
-	
-	@GetMapping("/languages/{id}")
-	public ResponseEntity<List<String>> getLanguages(
-	        @PathVariable Long id) throws JobPortalException {
+    @DeleteMapping("/me/certifications/{certificationId}")
+    public ResponseEntity<ApiResponse<Void>> deleteCertification(
+            @PathVariable Long certificationId,
+            Authentication authentication) throws JobPortalException {
+        profileService.deleteCertification(certificationId, authentication.getName());
+        return ResponseEntity.ok(ApiResponse.message("Certification deleted"));
+    }
 
-	    return ResponseEntity.ok(
-	            profileService.getLanguages(id));
-	}
+    @GetMapping("/me/certifications")
+    public ResponseEntity<ApiResponse<List<CertificationResponse>>> getCertifications(
+            Authentication authentication) throws JobPortalException {
+        return ResponseEntity.ok(ApiResponse.success(
+                profileService.getCertifications(authentication.getName())));
+    }
+
+    // ── Languages ─────────────────────────────────────────────────────────────
+
+    @PostMapping("/me/languages")
+    public ResponseEntity<ApiResponse<ProfileResponse>> addLanguage(
+            @RequestParam String language,
+            Authentication authentication) throws JobPortalException {
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success("Language added",
+                profileService.addLanguage(language, authentication.getName())));
+    }
+
+    @DeleteMapping("/me/languages")
+    public ResponseEntity<ApiResponse<ProfileResponse>> removeLanguage(
+            @RequestParam String language,
+            Authentication authentication) throws JobPortalException {
+        return ResponseEntity.ok(ApiResponse.success("Language removed",
+                profileService.removeLanguage(language, authentication.getName())));
+    }
+
+    // ── Images ────────────────────────────────────────────────────────────────
+
+    @PutMapping("/me/profile-image")
+    public ResponseEntity<ApiResponse<ProfileResponse>> updateProfileImage(
+            @RequestParam("file") MultipartFile file,
+            Authentication authentication) throws Exception {
+        return ResponseEntity.ok(ApiResponse.success("Profile image updated",
+                profileService.updateProfileImage(file, authentication.getName())));
+    }
+
+    @PutMapping("/me/banner-image")
+    public ResponseEntity<ApiResponse<ProfileResponse>> updateBannerImage(
+            @RequestParam("file") MultipartFile file,
+            Authentication authentication) throws Exception {
+        return ResponseEntity.ok(ApiResponse.success("Banner image updated",
+                profileService.updateBannerImage(file, authentication.getName())));
+    }
+
+    // ── Resume ────────────────────────────────────────────────────────────────
+
+    @PostMapping("/me/resume")
+    public ResponseEntity<ApiResponse<ProfileResponse>> uploadResume(
+            @RequestParam("file") MultipartFile file,
+            Authentication authentication) throws Exception {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success("Resume uploaded",
+                        profileService.uploadResume(file, authentication.getName())));
+    }
+
+    @DeleteMapping("/me/resume")
+    public ResponseEntity<ApiResponse<Void>> deleteResume(
+            Authentication authentication) throws JobPortalException {
+        profileService.deleteResume(authentication.getName());
+        return ResponseEntity.ok(ApiResponse.message("Resume deleted"));
+    }
 }

@@ -1,192 +1,243 @@
 package com.jobportal.serviceImpl;
 
-import java.util.List;
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.util.UUID;
 
-import org.modelmapper.ModelMapper;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import com.jobportal.dto.AccountType;
+import com.jobportal.domain.AccountType;
 import com.jobportal.dto.CompanyRequestDTO;
 import com.jobportal.dto.CompanyResponseDTO;
-import com.jobportal.dto.JobResponseDTO;
+import com.jobportal.dto.response.JobSummaryResponse;
 import com.jobportal.entity.Company;
-import com.jobportal.entity.Job;
 import com.jobportal.entity.Recruiter;
 import com.jobportal.entity.User;
 import com.jobportal.exception.JobPortalException;
+import com.jobportal.mapper.JobMapper;
 import com.jobportal.repository.CompanyRepository;
 import com.jobportal.repository.JobRepository;
-import com.jobportal.repository.RecuriterRepository;
+import com.jobportal.repository.RecruiterRepository;
 import com.jobportal.repository.UserRepository;
 import com.jobportal.service.CompanyService;
 
+
 @Service
 public class CompanyServiceImpl implements CompanyService {
-	
-	@Autowired
-	private ModelMapper mapper;
-	
-	@Autowired
-	private UserRepository userRepository;
-	
-	@Autowired
-	private RecuriterRepository recruiterRepository;
-	
-	
-	@Autowired
-	private CompanyRepository companyRepository;
-	
-	@Autowired
-	private JobRepository jobRepository;
 
-	@Override
-	public CompanyResponseDTO createCompany(CompanyRequestDTO companyRequestDTO, String email)
-	        throws JobPortalException {
+    private final UserRepository userRepository;
+    private final RecruiterRepository recruiterRepository;
+    private final CompanyRepository companyRepository;
+    private final JobRepository jobRepository;
+    private final JobMapper jobMapper;
+    private final String uploadBaseDir;
 
-	    // Find logged-in user
-	    User user = userRepository.findByEmail(email)
-	            .orElseThrow(() ->
-	                    new JobPortalException("User not found"));
+    public CompanyServiceImpl(
+            UserRepository userRepository,
+            RecruiterRepository recruiterRepository,
+            CompanyRepository companyRepository,
+            JobRepository jobRepository,
+            JobMapper jobMapper,
+            @Value("${file.upload.base-dir}") String uploadBaseDir) {
+        this.userRepository = userRepository;
+        this.recruiterRepository = recruiterRepository;
+        this.companyRepository = companyRepository;
+        this.jobRepository = jobRepository;
+        this.jobMapper = jobMapper;
+        this.uploadBaseDir = uploadBaseDir;
+    }
 
-	    // Check account type
-	    if (user.getAccountType() != AccountType.EMPLOYER) {
-	        throw new JobPortalException("Only employers can create a company.");
-	    }
+    @Override
+    @Transactional
+    public CompanyResponseDTO createCompany(CompanyRequestDTO dto, String email)
+            throws JobPortalException {
+        User user = findUserByEmail(email);
 
-	    // Find recruiter
-	    Recruiter recruiter = recruiterRepository.findByUser(user)
-	            .orElseThrow(() ->
-	                    new JobPortalException("Recruiter profile not found"));
+        if (user.getAccountType() != AccountType.EMPLOYER) {
+            throw JobPortalException.forbidden("Only employers can create a company.");
+        }
 
-	    // Check if recruiter already has a company
-	    if (recruiter.getCompany() != null) {
-	        throw new JobPortalException("Recruiter already belongs to a company.");
-	    }
+        Recruiter recruiter = findRecruiterByUser(user);
 
-	    // Create company
-	    Company company = new Company();
-	    company.setCompanyName(companyRequestDTO.getCompanyName());
-	    company.setWebsite(companyRequestDTO.getWebsite());
-	    company.setLogo(companyRequestDTO.getLogo());
-	    company.setIndustry(companyRequestDTO.getIndustry());
-	    company.setCompanySize(companyRequestDTO.getCompanySize());
-	    company.setHeadquarters(companyRequestDTO.getHeadquarters());
-	    company.setFoundedYear(companyRequestDTO.getFoundedYear());
-	    company.setEmail(companyRequestDTO.getEmail());
-	    company.setPhone(companyRequestDTO.getPhone());
-	    company.setDescription(companyRequestDTO.getDescription());
-	    company.setMission(companyRequestDTO.getMission());
-	    company.setBenefits(companyRequestDTO.getBenefits());
+        if (recruiter.getCompany() != null) {
+            throw JobPortalException.conflict("You already belong to a company.");
+        }
 
-	    // Save company
-	    Company savedCompany = companyRepository.save(company);
+        Company company = new Company();
+        mapDtoToCompany(dto, company);
 
-	    // Link recruiter to company
-	    recruiter.setCompany(savedCompany);
-	    recruiterRepository.save(recruiter);
+        Company savedCompany = companyRepository.save(company);
 
-	    // Prepare response
-	    CompanyResponseDTO response = new CompanyResponseDTO();
-	    response.setId(savedCompany.getId());
-	    response.setCompanyName(savedCompany.getCompanyName());
-	    response.setWebsite(savedCompany.getWebsite());
-	    response.setLogo(savedCompany.getLogo());
-	    response.setIndustry(savedCompany.getIndustry());
-	    response.setCompanySize(savedCompany.getCompanySize());
-	    response.setHeadquarters(savedCompany.getHeadquarters());
-	    response.setFoundedYear(savedCompany.getFoundedYear());
-	    response.setEmail(savedCompany.getEmail());
-	    response.setPhone(savedCompany.getPhone());
-	    response.setDescription(savedCompany.getDescription());
-	    response.setMission(savedCompany.getMission());
-	    response.setBenefits(savedCompany.getBenefits());
-	    response.setCreatedOn(savedCompany.getCreatedOn());
-	    response.setUpdatedOn(savedCompany.getUpdatedOn());
+        recruiter.setCompany(savedCompany);
+        recruiterRepository.save(recruiter);
 
-	    return response;
-	}
+        return toCompanyResponse(savedCompany);
+    }
 
-	@Override
-	public CompanyResponseDTO getMyCompany(String email) throws JobPortalException {
+    @Override
+    @Transactional(readOnly = true)
+    public CompanyResponseDTO getMyCompany(String email) throws JobPortalException {
+        Recruiter recruiter = findRecruiterByUser(findUserByEmail(email));
+        if (recruiter.getCompany() == null) {
+            throw JobPortalException.notFound("No company found for your account.");
+        }
+        return toCompanyResponse(recruiter.getCompany());
+    }
 
-	    User user = userRepository.findByEmail(email)
-	            .orElseThrow(() -> new JobPortalException("User not found"));
+    @Override
+    @Transactional
+    public CompanyResponseDTO updateCompany(CompanyRequestDTO dto, String email)
+            throws JobPortalException {
+        Recruiter recruiter = findRecruiterByUser(findUserByEmail(email));
+        Company company = getRecruiterCompany(recruiter);
 
-	    Recruiter recruiter = recruiterRepository.findByUser(user)
-	            .orElseThrow(() -> new JobPortalException("Recruiter not found"));
+        mapDtoToCompany(dto, company);
+        Company updated = companyRepository.save(company);
+        return toCompanyResponse(updated);
+    }
 
-	    Company company = recruiter.getCompany();
+    @Override
+    @Transactional
+    public void deleteCompany(String email) throws JobPortalException {
+        User user = findUserByEmail(email);
+        Recruiter recruiter = findRecruiterByUser(user);
+        Company company = getRecruiterCompany(recruiter);
 
-	    if (company == null) {
-	        throw new JobPortalException("No company assigned to recruiter.");
-	    }
+        recruiter.setCompany(null);
+        recruiterRepository.save(recruiter);
 
-	    return mapper.map(company, CompanyResponseDTO.class);
-	}
+        companyRepository.delete(company);
+    }
 
-	@Override
-	public CompanyResponseDTO updateCompany(CompanyRequestDTO dto, String email) throws JobPortalException {
-		// TODO Auto-generated method stub
-		return null;
-	}
+    @Override
+    @Transactional(readOnly = true)
+    public CompanyResponseDTO getCompanyById(Long companyId) throws JobPortalException {
+        Company company = companyRepository.findById(companyId)
+                .orElseThrow(() -> JobPortalException.notFound(
+                        "Company not found with id: " + companyId));
+        return toCompanyResponse(company);
+    }
 
-	@Override
-	public void deleteCompany(String email) throws JobPortalException {
-		// TODO Auto-generated method stub
-		
-	}
+    @Override
+    @Transactional(readOnly = true)
+    public Page<CompanyResponseDTO> getAllCompanies(Pageable pageable) {
+        return companyRepository.findAll(pageable)
+                .map(this::toCompanyResponse);
+    }
 
-	@Override
-	public CompanyResponseDTO getCompanyById(Long companyId) throws JobPortalException {
-		// TODO Auto-generated method stub
-		return null;
-	}
+    @Override
+    @Transactional(readOnly = true)
+    public Page<CompanyResponseDTO> searchCompanies(String keyword, Pageable pageable) {
+        return companyRepository.searchCompanies(keyword, pageable)
+                .map(this::toCompanyResponse);
+    }
 
-	@Override
-	public List<CompanyResponseDTO> getAllCompanies() {
-		// TODO Auto-generated method stub
-		return null;
-	}
+    @Override
+    @Transactional
+    public CompanyResponseDTO uploadLogo(MultipartFile file, String email) throws Exception {
+        Recruiter recruiter = findRecruiterByUser(findUserByEmail(email));
+        Company company = getRecruiterCompany(recruiter);
 
-	@Override
-	public List<CompanyResponseDTO> searchCompanies(String keyword) {
-		// TODO Auto-generated method stub
-		return null;
-	}
+        String fileName = saveFile(file, "logo");
+        company.setLogo(fileName);
+        Company updated = companyRepository.save(company);
+        return toCompanyResponse(updated);
+    }
 
-	@Override
-	public CompanyResponseDTO uploadLogo(MultipartFile file, String email) {
-		// TODO Auto-generated method stub
-		return null;
-	}
-	
-	@Override
-	public CompanyResponseDTO uploadCoverImage(MultipartFile file, String email) {
-		// TODO Auto-generated method stub
-		return null;
-	}
+    @Override
+    @Transactional
+    public CompanyResponseDTO uploadCoverImage(MultipartFile file, String email) throws Exception {
+        Recruiter recruiter = findRecruiterByUser(findUserByEmail(email));
+        Company company = getRecruiterCompany(recruiter);
 
-	@Override
-	public List<JobResponseDTO> getMyCompanyJobs(String email) throws JobPortalException {
+        String fileName = saveFile(file, "cover");
+        company.setCoverImage(fileName);
+        Company updated = companyRepository.save(company);
+        return toCompanyResponse(updated);
+    }
 
-	    User user = userRepository.findByEmail(email)
-	            .orElseThrow(() -> new JobPortalException("User not found"));
+    @Override
+    @Transactional(readOnly = true)
+    public Page<JobSummaryResponse> getMyCompanyJobs(String email, Pageable pageable)
+            throws JobPortalException {
+        Recruiter recruiter = findRecruiterByUser(findUserByEmail(email));
+        Company company = getRecruiterCompany(recruiter);
 
-	    Recruiter recruiter = recruiterRepository.findByUser(user)
-	            .orElseThrow(() -> new JobPortalException("Recruiter profile not found"));
+        return jobRepository.findByCompanyIdAndStatus(company.getId(), com.jobportal.domain.JobStatus.OPEN, pageable)
+                .map(jobMapper::toSummary);
 
-	    Company company = recruiter.getCompany();
+    }
 
-	    if (company == null) {
-	        throw new JobPortalException("Recruiter is not associated with any company.");
-	    }
+    // ── Private Helpers ─────────────────────────────────────────────────────
 
-	    List<Job> jobs = jobRepository.findByCompany(company);
+    private User findUserByEmail(String email) throws JobPortalException {
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> JobPortalException.notFound("User not found"));
+    }
 
-	    return jobs.stream()
-	            .map(job -> mapper.map(job, JobResponseDTO.class))
-	            .toList();
-	}
+    private Recruiter findRecruiterByUser(User user) throws JobPortalException {
+        return recruiterRepository.findByUser(user)
+                .orElseThrow(() -> JobPortalException.notFound("Recruiter profile not found"));
+    }
+
+    private Company getRecruiterCompany(Recruiter recruiter) throws JobPortalException {
+        if (recruiter.getCompany() == null) {
+            throw JobPortalException.notFound("No company found for your account.");
+        }
+        return recruiter.getCompany();
+    }
+
+    private void mapDtoToCompany(CompanyRequestDTO dto, Company company) {
+        if (dto.getCompanyName() != null) company.setCompanyName(dto.getCompanyName());
+        if (dto.getWebsite() != null) company.setWebsite(dto.getWebsite());
+        if (dto.getIndustry() != null) company.setIndustry(dto.getIndustry());
+        if (dto.getCompanySize() != null) company.setCompanySize(dto.getCompanySize());
+        if (dto.getHeadquarters() != null) company.setHeadquarters(dto.getHeadquarters());
+        if (dto.getFoundedYear() != null) company.setFoundedYear(dto.getFoundedYear());
+        if (dto.getEmail() != null) company.setEmail(dto.getEmail());
+        if (dto.getPhone() != null) company.setPhone(dto.getPhone());
+        if (dto.getDescription() != null) company.setDescription(dto.getDescription());
+        if (dto.getMission() != null) company.setMission(dto.getMission());
+        if (dto.getBenefits() != null) company.setBenefits(dto.getBenefits());
+    }
+
+    private String saveFile(MultipartFile file, String subDir) throws Exception {
+        String dir = uploadBaseDir + "/" + subDir + "/";
+        File directory = new File(dir);
+        if (!directory.exists()) {
+            directory.mkdirs();
+        }
+        String fileName = UUID.randomUUID() + "_" + file.getOriginalFilename();
+        Path path = Paths.get(dir + fileName);
+        Files.copy(file.getInputStream(), path, StandardCopyOption.REPLACE_EXISTING);
+        return subDir + "/" + fileName;
+    }
+
+    private CompanyResponseDTO toCompanyResponse(Company c) {
+        CompanyResponseDTO dto = new CompanyResponseDTO();
+        dto.setId(c.getId());
+        dto.setCompanyName(c.getCompanyName());
+        dto.setWebsite(c.getWebsite());
+        dto.setLogo(c.getLogo());
+        dto.setIndustry(c.getIndustry());
+        dto.setCompanySize(c.getCompanySize());
+        dto.setHeadquarters(c.getHeadquarters());
+        dto.setFoundedYear(c.getFoundedYear());
+        dto.setEmail(c.getEmail());
+        dto.setPhone(c.getPhone());
+        dto.setDescription(c.getDescription());
+        dto.setMission(c.getMission());
+        dto.setBenefits(c.getBenefits());
+        dto.setCreatedOn(c.getCreatedAt());
+        dto.setUpdatedOn(c.getUpdatedAt());
+        return dto;
+    }
 }

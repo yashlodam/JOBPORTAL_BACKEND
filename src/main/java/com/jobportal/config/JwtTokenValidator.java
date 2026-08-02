@@ -1,79 +1,61 @@
 package com.jobportal.config;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.util.List;
 
-import javax.crypto.SecretKey;
-
-import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.AuthorityUtils;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
+import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+/**
+ * JWT authentication filter — now a proper Spring bean with injected dependencies.
+ * Validates the Bearer token on every request before it reaches controllers.
+ */
 public class JwtTokenValidator extends OncePerRequestFilter {
 
-    private static final SecretKey KEY =
-            Keys.hmacShaKeyFor(
-                    JWT_CONSTANT.SECRET_KEY.getBytes(StandardCharsets.UTF_8));
+    private final JwtProvider jwtProvider;
+    private final UserDetailsService userDetailsService;
+
+    public JwtTokenValidator(JwtProvider jwtProvider, UserDetailsService userDetailsService) {
+        this.jwtProvider = jwtProvider;
+        this.userDetailsService = userDetailsService;
+    }
 
     @Override
     protected void doFilterInternal(
             HttpServletRequest request,
             HttpServletResponse response,
-            FilterChain filterChain)
-            throws ServletException, IOException {
+            FilterChain filterChain) throws ServletException, IOException {
 
-        String jwt = request.getHeader(JWT_CONSTANT.JWT_HEADER);
+        String authHeader = request.getHeader(JwtConstants.HEADER_STRING);
 
-        if (jwt != null && jwt.startsWith("Bearer ")) {
+        if (authHeader == null || !authHeader.startsWith(JwtConstants.TOKEN_PREFIX)) {
+            filterChain.doFilter(request, response);
+            return;
+        }
 
-            try {
+        try {
+            String email = jwtProvider.getEmailFromToken(authHeader);
 
-                jwt = jwt.substring(7);
-
-                Claims claims = Jwts.parser()
-                        .verifyWith(KEY)
-                        .build()
-                        .parseSignedClaims(jwt)
-                        .getPayload();
-
-                String email = claims.getSubject();
-
-                // If you didn't set subject while generating the token,
-                // uncomment the line below instead.
-                // String email = claims.get("email", String.class);
-
-                String authorities =
-                        claims.get("authorities", String.class);
-
-                List<GrantedAuthority> grantedAuthorities =
-                        AuthorityUtils.commaSeparatedStringToAuthorityList(authorities);
-
-                UsernamePasswordAuthenticationToken authentication =
+            if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                UserDetails userDetails = userDetailsService.loadUserByUsername(email);
+                UsernamePasswordAuthenticationToken authToken =
                         new UsernamePasswordAuthenticationToken(
-                                email,
+                                userDetails,
                                 null,
-                                grantedAuthorities);
-
-                SecurityContextHolder.getContext().setAuthentication(authentication);
-
-            } catch (Exception e) {
-
-                SecurityContextHolder.clearContext();
-
-                throw new BadCredentialsException("Invalid JWT Token");
+                                userDetails.getAuthorities());
+                SecurityContextHolder.getContext().setAuthentication(authToken);
             }
+        } catch (JwtException | IllegalArgumentException ex) {
+            // Invalid token — let the request continue without authentication
+            // Spring Security will reject protected endpoints automatically
         }
 
         filterChain.doFilter(request, response);

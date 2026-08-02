@@ -1,6 +1,7 @@
 package com.jobportal.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.jobportal.domain.AccountType;
 
 public class UserDTO {
 
