@@ -7,9 +7,13 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.OneToOne;
+import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
+/**
+ * Entity representing a user's uploaded resume document.
+ * A single profile can have multiple resumes, with one marked as default.
+ */
 @Entity
 @Table(name = "resumes")
 public class Resume extends Auditable {
@@ -22,16 +26,23 @@ public class Resume extends Auditable {
     private String resumeName;
 
     @Column(nullable = false)
+    private String fileName;
+
+    @Column(nullable = false)
     private String resumeUrl;
 
     private Long fileSizeBytes;
 
-    @OneToOne(fetch = FetchType.LAZY)
+    private String contentType;
+
+    @Column(nullable = false)
+    private Boolean isDefault = false;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "profile_id", nullable = false)
     private Profile profile;
 
     public Resume() {
-    	
     }
 
     public Long getId() { return id; }
@@ -40,11 +51,20 @@ public class Resume extends Auditable {
     public String getResumeName() { return resumeName; }
     public void setResumeName(String resumeName) { this.resumeName = resumeName; }
 
+    public String getFileName() { return fileName; }
+    public void setFileName(String fileName) { this.fileName = fileName; }
+
     public String getResumeUrl() { return resumeUrl; }
     public void setResumeUrl(String resumeUrl) { this.resumeUrl = resumeUrl; }
 
     public Long getFileSizeBytes() { return fileSizeBytes; }
     public void setFileSizeBytes(Long fileSizeBytes) { this.fileSizeBytes = fileSizeBytes; }
+
+    public String getContentType() { return contentType; }
+    public void setContentType(String contentType) { this.contentType = contentType; }
+
+    public Boolean getIsDefault() { return isDefault; }
+    public void setIsDefault(Boolean isDefault) { this.isDefault = isDefault; }
 
     public Profile getProfile() { return profile; }
     public void setProfile(Profile profile) { this.profile = profile; }

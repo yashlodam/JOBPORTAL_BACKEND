@@ -220,4 +220,7 @@ public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificatio
     @Modifying
     @Query("UPDATE Job j SET j.totalViews = j.totalViews + 1 WHERE j.id = :jobId")
     void incrementViewCount(@Param("jobId") Long jobId);
+    
+    
+    long countByCompanyIdAndStatus(Long companyId, JobStatus status);
 }

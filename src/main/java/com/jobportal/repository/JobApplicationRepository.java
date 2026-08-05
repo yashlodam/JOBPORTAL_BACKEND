@@ -26,4 +26,13 @@ public interface JobApplicationRepository extends JpaRepository<JobApplication, 
 
     @Query("SELECT COUNT(ja) FROM JobApplication ja WHERE ja.job.id = :jobId")
     long countByJobId(@Param("jobId") Long jobId);
+
+    /**
+     * Returns all applicant user IDs for a given job.
+     * Used by {@link com.jobportal.serviceImpl.JobServiceImpl#deleteJob}
+     * to capture IDs before the job entity is deleted, so the
+     * {@link com.jobportal.event.JobDeletedEvent} listener can notify them.
+     */
+    @Query("SELECT ja.applicant.id FROM JobApplication ja WHERE ja.job.id = :jobId")
+    java.util.List<Long> findApplicantUserIdsByJobId(@Param("jobId") Long jobId);
 }

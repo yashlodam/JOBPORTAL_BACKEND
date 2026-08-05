@@ -1,9 +1,6 @@
 package com.jobportal.serviceImpl;
 
-import java.time.LocalDateTime;
-
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,6 +12,8 @@ import com.jobportal.entity.Otp;
 import com.jobportal.entity.Profile;
 import com.jobportal.entity.Recruiter;
 import com.jobportal.entity.User;
+import com.jobportal.event.PasswordResetEvent;
+import com.jobportal.event.UserRegisteredEvent;
 import com.jobportal.exception.JobPortalException;
 import com.jobportal.repository.OtpRepository;
 import com.jobportal.repository.UserRepository;
@@ -23,23 +22,42 @@ import com.jobportal.utility.Utilities;
 
 import jakarta.mail.internet.MimeMessage;
 
+import java.time.LocalDateTime;
+
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
+
+/**
+ * User service implementation.
+ *
+ * <h3>Notifications (event-driven)</h3>
+ * <ul>
+ *   <li>{@link UserRegisteredEvent} — fired after registration.
+ *       The listener sends a welcome {@code ACCOUNT} notification.</li>
+ *   <li>{@link PasswordResetEvent} — fired after a successful OTP-verified password reset.
+ *       The listener sends a {@code SECURITY} alert notification.</li>
+ * </ul>
+ */
 @Service
 public class UserServiceImpl implements UserService {
 
-    private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final JavaMailSender mailSender;
-    private final OtpRepository otpRepository;
+    private final UserRepository           userRepository;
+    private final PasswordEncoder          passwordEncoder;
+    private final JavaMailSender           mailSender;
+    private final OtpRepository            otpRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public UserServiceImpl(
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
             JavaMailSender mailSender,
-            OtpRepository otpRepository) {
-        this.userRepository = userRepository;
+            OtpRepository otpRepository,
+            ApplicationEventPublisher eventPublisher) {
+        this.userRepository  = userRepository;
         this.passwordEncoder = passwordEncoder;
-        this.mailSender = mailSender;
-        this.otpRepository = otpRepository;
+        this.mailSender      = mailSender;
+        this.otpRepository   = otpRepository;
+        this.eventPublisher  = eventPublisher;
     }
 
     @Override
@@ -67,6 +85,10 @@ public class UserServiceImpl implements UserService {
         }
 
         User savedUser = userRepository.save(user);
+
+        // ── Publish event: listener sends ACCOUNT welcome notification ────────
+        eventPublisher.publishEvent(new UserRegisteredEvent(this, savedUser));
+
         return toUserResponse(savedUser);
     }
 
@@ -137,6 +159,10 @@ public class UserServiceImpl implements UserService {
         userRepository.save(user);
 
         otpRepository.delete(otp);
+
+        // ── Publish event: listener sends SECURITY alert notification ─────────
+        eventPublisher.publishEvent(new PasswordResetEvent(this, user));
+
         return true;
     }
 

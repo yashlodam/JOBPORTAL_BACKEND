@@ -3,6 +3,7 @@ package com.jobportal.serviceImpl;
 import java.util.List;
 
 import org.hibernate.Hibernate;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -24,6 +25,7 @@ import com.jobportal.entity.Education;
 import com.jobportal.entity.Experience;
 import com.jobportal.entity.Profile;
 import com.jobportal.entity.Resume;
+import com.jobportal.event.ProfileCompletedEvent;
 import com.jobportal.exception.JobPortalException;
 import com.jobportal.repository.CertificationRepository;
 import com.jobportal.repository.EducationRepository;
@@ -33,15 +35,35 @@ import com.jobportal.repository.ResumeRepository;
 import com.jobportal.service.ProfileService;
 import com.jobportal.utility.FileStorageService;
 
+/**
+ * Profile service implementation.
+ *
+ * <h3>Notifications (event-driven)</h3>
+ * <p>{@link ProfileCompletedEvent} is published after every major profile mutation
+ * whenever the profile crosses the "complete" threshold. A "complete" profile has:</p>
+ * <ul>
+ *   <li>A non-blank headline</li>
+ *   <li>A non-blank about section</li>
+ *   <li>At least one skill</li>
+ *   <li>At least one experience OR education entry</li>
+ *   <li>A resume uploaded</li>
+ * </ul>
+ * <p>The check is idempotent: repeating after each save ensures the notification
+ * is sent the moment all conditions are met. The listener deduplicates by
+ * checking for an existing {@code PROFILE_COMPLETED} notification before creating
+ * a new one (see {@link com.jobportal.listener.NotificationEventListener}).</p>
+ */
 @Service
 public class ProfileServiceImpl implements ProfileService {
 
-    private final ProfileRepository profileRepository;
-    private final ExperienceRepository experienceRepository;
-    private final EducationRepository educationRepository;
+    private final ProfileRepository       profileRepository;
+    private final ExperienceRepository    experienceRepository;
+    private final EducationRepository     educationRepository;
     private final CertificationRepository certificationRepository;
-    private final ResumeRepository resumeRepository;
-    private final FileStorageService fileStorageService;
+    private final ResumeRepository        resumeRepository;
+    private final FileStorageService      fileStorageService;
+    private final ApplicationEventPublisher eventPublisher;
+    private final com.jobportal.service.ResumeService resumeService;
 
     public ProfileServiceImpl(
             ProfileRepository profileRepository,
@@ -49,13 +71,17 @@ public class ProfileServiceImpl implements ProfileService {
             EducationRepository educationRepository,
             CertificationRepository certificationRepository,
             ResumeRepository resumeRepository,
-            FileStorageService fileStorageService) {
-        this.profileRepository = profileRepository;
-        this.experienceRepository = experienceRepository;
-        this.educationRepository = educationRepository;
+            FileStorageService fileStorageService,
+            ApplicationEventPublisher eventPublisher,
+            com.jobportal.service.ResumeService resumeService) {
+        this.profileRepository       = profileRepository;
+        this.experienceRepository    = experienceRepository;
+        this.educationRepository     = educationRepository;
         this.certificationRepository = certificationRepository;
-        this.resumeRepository = resumeRepository;
-        this.fileStorageService = fileStorageService;
+        this.resumeRepository        = resumeRepository;
+        this.fileStorageService      = fileStorageService;
+        this.eventPublisher          = eventPublisher;
+        this.resumeService           = resumeService;
     }
 
     // ── Profile Reads ────────────────────────────────────────────────────────
@@ -79,25 +105,27 @@ public class ProfileServiceImpl implements ProfileService {
 
     @Override
     @Transactional
-    public ProfileResponse updateHeader(ProfileHeaderRequest request, String email) throws JobPortalException {
-        // Use lightweight fetch for the mutation — no unnecessary joins.
+    public ProfileResponse updateHeader(ProfileHeaderRequest request, String email)
+            throws JobPortalException {
         Profile profile = findProfileByEmail(email);
-        if (request.getHeadline() != null)      profile.setHeadline(request.getHeadline().trim());
-        if (request.getCurrentCompany() != null) profile.setCurrentCompany(request.getCurrentCompany().trim());
-        if (request.getLocation() != null)       profile.setLocation(request.getLocation().trim());
-        if (request.getAvailability() != null)   profile.setAvailability(request.getAvailability());
+        if (request.getHeadline() != null)        profile.setHeadline(request.getHeadline().trim());
+        if (request.getCurrentCompany() != null)  profile.setCurrentCompany(request.getCurrentCompany().trim());
+        if (request.getLocation() != null)        profile.setLocation(request.getLocation().trim());
+        if (request.getAvailability() != null)    profile.setAvailability(request.getAvailability());
         if (request.getExperienceLevel() != null) profile.setExperienceLevel(request.getExperienceLevel());
         profileRepository.save(profile);
-        // Re-fetch with ALL associations so toResponse() can map every field
-        // without hitting a LazyInitializationException.
-        return toResponse(findProfileByEmailWithDetails(email));
+
+        Profile updated = findProfileByEmailWithDetails(email);
+        publishProfileCompletedIfNeeded(updated);
+        return toResponse(updated);
     }
 
     // ── Links ────────────────────────────────────────────────────────────────
 
     @Override
     @Transactional
-    public ProfileResponse updateLinks(ProfileLinksRequest request, String email) throws JobPortalException {
+    public ProfileResponse updateLinks(ProfileLinksRequest request, String email)
+            throws JobPortalException {
         Profile profile = findProfileByEmail(email);
         if (request.getLinkedinUrl() != null)  profile.setLinkedinUrl(request.getLinkedinUrl().trim());
         if (request.getGithubUrl() != null)    profile.setGithubUrl(request.getGithubUrl().trim());
@@ -110,24 +138,32 @@ public class ProfileServiceImpl implements ProfileService {
 
     @Override
     @Transactional
-    public ProfileResponse updateAbout(ProfileAboutRequest request, String email) throws JobPortalException {
+    public ProfileResponse updateAbout(ProfileAboutRequest request, String email)
+            throws JobPortalException {
         Profile profile = findProfileByEmail(email);
         profile.setAbout(request.getAbout());
         profileRepository.save(profile);
-        return toResponse(findProfileByEmailWithDetails(email));
+
+        Profile updated = findProfileByEmailWithDetails(email);
+        publishProfileCompletedIfNeeded(updated);
+        return toResponse(updated);
     }
 
     // ── Skills ────────────────────────────────────────────────────────────────
 
     @Override
     @Transactional
-    public ProfileResponse updateSkills(ProfileSkillsRequest request, String email) throws JobPortalException {
+    public ProfileResponse updateSkills(ProfileSkillsRequest request, String email)
+            throws JobPortalException {
         // skills is @ElementCollection — must use the skills-loaded query to
         // safely access and mutate the collection within the session.
         Profile profile = findProfileByEmailWithDetails(email);
         profile.setSkills(request.getSkills());
         profileRepository.save(profile);
-        return toResponse(findProfileByEmailWithDetails(email));
+
+        Profile updated = findProfileByEmailWithDetails(email);
+        publishProfileCompletedIfNeeded(updated);
+        return toResponse(updated);
     }
 
     @Override
@@ -139,7 +175,10 @@ public class ProfileServiceImpl implements ProfileService {
             skills.add(skill);
         }
         profileRepository.save(profile);
-        return toResponse(findProfileByEmailWithDetails(email));
+
+        Profile updated = findProfileByEmailWithDetails(email);
+        publishProfileCompletedIfNeeded(updated);
+        return toResponse(updated);
     }
 
     @Override
@@ -157,12 +196,15 @@ public class ProfileServiceImpl implements ProfileService {
 
     @Override
     @Transactional
-    public ExperienceResponse addExperience(ExperienceRequest request, String email) throws JobPortalException {
+    public ExperienceResponse addExperience(ExperienceRequest request, String email)
+            throws JobPortalException {
         Profile profile = findProfileByEmail(email);
         Experience experience = new Experience();
         mapExperienceRequest(request, experience);
         profile.addExperience(experience);
-        return toExperienceResponse(experienceRepository.save(experience));
+        ExperienceResponse response = toExperienceResponse(experienceRepository.save(experience));
+        publishProfileCompletedIfNeeded(findProfileByEmailWithDetails(email));
+        return response;
     }
 
     @Override
@@ -171,7 +213,8 @@ public class ProfileServiceImpl implements ProfileService {
             throws JobPortalException {
         Profile profile = findProfileByEmail(email);
         Experience experience = experienceRepository.findById(experienceId)
-                .orElseThrow(() -> JobPortalException.notFound("Experience not found with id: " + experienceId));
+                .orElseThrow(() -> JobPortalException.notFound(
+                        "Experience not found with id: " + experienceId));
 
         if (!experience.getProfile().getId().equals(profile.getId())) {
             throw JobPortalException.forbidden("You are not authorized to update this experience");
@@ -186,7 +229,8 @@ public class ProfileServiceImpl implements ProfileService {
     public void deleteExperience(Long experienceId, String email) throws JobPortalException {
         Profile profile = findProfileByEmail(email);
         Experience experience = experienceRepository.findById(experienceId)
-                .orElseThrow(() -> JobPortalException.notFound("Experience not found with id: " + experienceId));
+                .orElseThrow(() -> JobPortalException.notFound(
+                        "Experience not found with id: " + experienceId));
 
         if (!experience.getProfile().getId().equals(profile.getId())) {
             throw JobPortalException.forbidden("You are not authorized to delete this experience");
@@ -208,12 +252,14 @@ public class ProfileServiceImpl implements ProfileService {
 
     @Override
     @Transactional
-    public EducationResponse addEducation(EducationRequest request, String email) throws JobPortalException {
+    public EducationResponse addEducation(EducationRequest request, String email)
+            throws JobPortalException {
         Profile profile = findProfileByEmail(email);
         Education education = new Education();
         mapEducationRequest(request, education);
         profile.addEducation(education);
         Education saved = educationRepository.save(education);
+        publishProfileCompletedIfNeeded(findProfileByEmailWithDetails(email));
         return toEducationResponse(saved);
     }
 
@@ -223,7 +269,8 @@ public class ProfileServiceImpl implements ProfileService {
             throws JobPortalException {
         Profile profile = findProfileByEmail(email);
         Education education = educationRepository.findById(educationId)
-                .orElseThrow(() -> JobPortalException.notFound("Education not found with id: " + educationId));
+                .orElseThrow(() -> JobPortalException.notFound(
+                        "Education not found with id: " + educationId));
 
         if (!education.getProfile().getId().equals(profile.getId())) {
             throw JobPortalException.forbidden("You are not authorized to update this education");
@@ -238,7 +285,8 @@ public class ProfileServiceImpl implements ProfileService {
     public void deleteEducation(Long educationId, String email) throws JobPortalException {
         Profile profile = findProfileByEmail(email);
         Education education = educationRepository.findById(educationId)
-                .orElseThrow(() -> JobPortalException.notFound("Education not found with id: " + educationId));
+                .orElseThrow(() -> JobPortalException.notFound(
+                        "Education not found with id: " + educationId));
 
         if (!education.getProfile().getId().equals(profile.getId())) {
             throw JobPortalException.forbidden("You are not authorized to delete this education");
@@ -266,17 +314,19 @@ public class ProfileServiceImpl implements ProfileService {
         Certification certification = new Certification();
         mapCertificationRequest(request, certification);
         profile.addCertification(certification);
-        Certification saved = certificationRepository.save(certification);
-        return toCertificationResponse(saved);
+        return toCertificationResponse(certificationRepository.save(certification));
     }
 
     @Override
     @Transactional
-    public CertificationResponse updateCertification(Long certificationId, CertificationRequest request, String email)
+    public CertificationResponse updateCertification(Long certificationId,
+                                                      CertificationRequest request,
+                                                      String email)
             throws JobPortalException {
         Profile profile = findProfileByEmail(email);
         Certification certification = certificationRepository.findById(certificationId)
-                .orElseThrow(() -> JobPortalException.notFound("Certification not found with id: " + certificationId));
+                .orElseThrow(() -> JobPortalException.notFound(
+                        "Certification not found with id: " + certificationId));
 
         if (!certification.getProfile().getId().equals(profile.getId())) {
             throw JobPortalException.forbidden("You are not authorized to update this certification");
@@ -291,7 +341,8 @@ public class ProfileServiceImpl implements ProfileService {
     public void deleteCertification(Long certificationId, String email) throws JobPortalException {
         Profile profile = findProfileByEmail(email);
         Certification certification = certificationRepository.findById(certificationId)
-                .orElseThrow(() -> JobPortalException.notFound("Certification not found with id: " + certificationId));
+                .orElseThrow(() -> JobPortalException.notFound(
+                        "Certification not found with id: " + certificationId));
 
         if (!certification.getProfile().getId().equals(profile.getId())) {
             throw JobPortalException.forbidden("You are not authorized to delete this certification");
@@ -364,45 +415,6 @@ public class ProfileServiceImpl implements ProfileService {
         return toResponse(findProfileByEmailWithDetails(email));
     }
 
-    @Override
-    @Transactional
-    public ProfileResponse uploadResume(MultipartFile file, String email) throws Exception {
-
-        Profile profile = findProfileByEmail(email);
-
-        Resume resume = profile.getResume();
-
-        if (resume == null) {
-            resume = new Resume();
-            resume.setProfile(profile);
-        } else {
-            fileStorageService.delete(resume.getResumeUrl());
-        }
-
-        String path = fileStorageService.store(file, "resume");
-
-        resume.setResumeName(file.getOriginalFilename());
-        resume.setResumeUrl(path);
-        resume.setFileSizeBytes(file.getSize());
-
-        resumeRepository.save(resume);
-
-        return toResponse(profileRepository.findByUserEmailWithDetails(email)
-                .orElseThrow(() -> new JobPortalException("Profile not found", null)));
-    }
-    @Override
-    @Transactional
-    public void deleteResume(String email) throws JobPortalException {
-        Profile profile = findProfileByEmail(email);
-        if (profile.getResume() == null) {
-            throw JobPortalException.notFound("No resume found to delete.");
-        }
-        fileStorageService.delete(profile.getResume().getResumeUrl());
-        resumeRepository.delete(profile.getResume());
-        profile.setResume(null);
-        profileRepository.save(profile);
-    }
-
     // ── Private Helpers ───────────────────────────────────────────────────────
 
     private Profile findProfileByEmail(String email) throws JobPortalException {
@@ -412,17 +424,49 @@ public class ProfileServiceImpl implements ProfileService {
 
     private Profile findProfileByEmailWithDetails(String email) throws JobPortalException {
         return profileRepository.findByUserEmailWithDetails(email)
-                .orElseThrow(() -> JobPortalException.notFound("Profile not found for email: " + email));
+                .orElseThrow(() -> JobPortalException.notFound(
+                        "Profile not found for email: " + email));
+    }
+
+    /**
+     * Checks whether the profile meets the "complete" criteria and, if so,
+     * publishes a {@link ProfileCompletedEvent}.
+     *
+     * <p>The listener deduplicates: it only creates one {@code PROFILE_COMPLETED}
+     * notification per user ever. So even if this method is called many times,
+     * the user receives the celebration notification exactly once.</p>
+     *
+     * <p>Called within an open {@code @Transactional} session, so Hibernate
+     * collection access (skills, experiences, educations) is safe without
+     * explicit {@code Hibernate.initialize()} calls.</p>
+     */
+    private void publishProfileCompletedIfNeeded(Profile profile) {
+        boolean hasHeadline    = hasText(profile.getHeadline());
+        boolean hasAbout       = hasText(profile.getAbout());
+        boolean hasSkills      = !profile.getSkills().isEmpty();
+        boolean hasExperience  = !profile.getExperiences().isEmpty();
+        boolean hasEducation   = !profile.getEducations().isEmpty();
+        boolean hasResume      = !profile.getResumes().isEmpty();
+
+        if (hasHeadline && hasAbout && hasSkills && (hasExperience || hasEducation) && hasResume) {
+            if (profile.getUser() != null) {
+                eventPublisher.publishEvent(new ProfileCompletedEvent(this, profile.getUser()));
+            }
+        }
+    }
+
+    private static boolean hasText(String value) {
+        return value != null && !value.isBlank();
     }
 
     private void mapExperienceRequest(ExperienceRequest req, Experience exp) {
-        if (req.getTitle() != null) exp.setTitle(req.getTitle());
-        if (req.getCompany() != null) exp.setCompany(req.getCompany());
-        if (req.getLocation() != null) exp.setLocation(req.getLocation());
-        if (req.getStartDate() != null) exp.setStartDate(req.getStartDate());
+        if (req.getTitle() != null)         exp.setTitle(req.getTitle());
+        if (req.getCompany() != null)       exp.setCompany(req.getCompany());
+        if (req.getLocation() != null)      exp.setLocation(req.getLocation());
+        if (req.getStartDate() != null)     exp.setStartDate(req.getStartDate());
         exp.setEndDate(req.getEndDate());
-        if (req.getWorking() != null) exp.setWorking(req.getWorking());
-        if (req.getDescription() != null) exp.setDescription(req.getDescription());
+        if (req.getWorking() != null)       exp.setWorking(req.getWorking());
+        if (req.getDescription() != null)   exp.setDescription(req.getDescription());
         if (req.getEmploymentType() != null) {
             try {
                 exp.setEmploymentType(ExperienceType.valueOf(req.getEmploymentType()));
@@ -433,32 +477,32 @@ public class ProfileServiceImpl implements ProfileService {
     }
 
     private void mapEducationRequest(EducationRequest req, Education edu) {
-        if (req.getDegree() != null) edu.setDegree(req.getDegree());
+        if (req.getDegree() != null)      edu.setDegree(req.getDegree());
         if (req.getCollegeName() != null) edu.setCollegeName(req.getCollegeName());
-        if (req.getUniversity() != null) edu.setUniversity(req.getUniversity());
-        if (req.getStartDate() != null) edu.setStartDate(req.getStartDate());
+        if (req.getUniversity() != null)  edu.setUniversity(req.getUniversity());
+        if (req.getStartDate() != null)   edu.setStartDate(req.getStartDate());
         edu.setEndDate(req.getEndDate());
-        if (req.getLocation() != null) edu.setLocation(req.getLocation());
-        if (req.getGrade() != null) edu.setFieldOfStudy(req.getGrade()); // maps grade → fieldOfStudy
+        if (req.getLocation() != null)    edu.setLocation(req.getLocation());
+        if (req.getGrade() != null)       edu.setFieldOfStudy(req.getGrade());
     }
 
     private void mapCertificationRequest(CertificationRequest req, Certification cert) {
-        if (req.getTitle() != null) cert.setTitle(req.getTitle());
-        if (req.getIssuer() != null) cert.setIssuer(req.getIssuer());
-        if (req.getIssueDate() != null) cert.setIssueDate(req.getIssueDate());
-        if (req.getCertificateId() != null) cert.setCertificateId(req.getCertificateId());
+        if (req.getTitle() != null)          cert.setTitle(req.getTitle());
+        if (req.getIssuer() != null)         cert.setIssuer(req.getIssuer());
+        if (req.getIssueDate() != null)      cert.setIssueDate(req.getIssueDate());
+        if (req.getCertificateId() != null)  cert.setCertificateId(req.getCertificateId());
         if (req.getCertificateUrl() != null) cert.setCertificateUrl(req.getCertificateUrl());
     }
 
     // ── Response Mappers ──────────────────────────────────────────────────────
 
     private ProfileResponse toResponse(Profile profile) {
-
-    	 Hibernate.initialize(profile.getSkills());          // <-- Missing
-    	    Hibernate.initialize(profile.getLanguages());
-    	    Hibernate.initialize(profile.getExperiences());
-    	    Hibernate.initialize(profile.getEducations());
-    	    Hibernate.initialize(profile.getCertifications());
+        Hibernate.initialize(profile.getSkills());
+        Hibernate.initialize(profile.getLanguages());
+        Hibernate.initialize(profile.getExperiences());
+        Hibernate.initialize(profile.getEducations());
+        Hibernate.initialize(profile.getCertifications());
+        Hibernate.initialize(profile.getResumes());
 
         ProfileResponse dto = new ProfileResponse();
 
@@ -499,9 +543,18 @@ public class ProfileServiceImpl implements ProfileService {
                 .map(this::toCertificationResponse)
                 .toList());
 
-        if (profile.getResume() != null) {
-            dto.setResumeUrl(profile.getResume().getResumeUrl());
-            dto.setResumeName(profile.getResume().getResumeName());
+        if (profile.getResumes() != null && !profile.getResumes().isEmpty()) {
+            dto.setResumes(profile.getResumes().stream()
+                    .map(resumeService::toResponse)
+                    .toList());
+
+            Resume defaultResume = profile.getResumes().stream()
+                    .filter(r -> Boolean.TRUE.equals(r.getIsDefault()))
+                    .findFirst()
+                    .orElse(profile.getResumes().get(0));
+
+            dto.setResumeUrl(defaultResume.getResumeUrl());
+            dto.setResumeName(defaultResume.getResumeName());
         }
 
         return dto;

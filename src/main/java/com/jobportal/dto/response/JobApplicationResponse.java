@@ -5,7 +5,7 @@ import java.time.LocalDateTime;
 import com.jobportal.domain.ApplicationStatus;
 
 /**
- * Response DTO for job applications.
+ * Response DTO for job applications. Includes detailed resume information for recruiter review.
  */
 public class JobApplicationResponse {
 
@@ -20,6 +20,7 @@ public class JobApplicationResponse {
     private ApplicationStatus status;
     private String coverLetter;
     private String resumeUrl;
+    private ResumeResponse resume;
     private LocalDateTime appliedAt;
     private LocalDateTime updatedAt;
 
@@ -55,6 +56,9 @@ public class JobApplicationResponse {
 
     public String getResumeUrl() { return resumeUrl; }
     public void setResumeUrl(String resumeUrl) { this.resumeUrl = resumeUrl; }
+
+    public ResumeResponse getResume() { return resume; }
+    public void setResume(ResumeResponse resume) { this.resume = resume; }
 
     public LocalDateTime getAppliedAt() { return appliedAt; }
     public void setAppliedAt(LocalDateTime appliedAt) { this.appliedAt = appliedAt; }

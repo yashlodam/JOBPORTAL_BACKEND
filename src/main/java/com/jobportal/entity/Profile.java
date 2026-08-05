@@ -115,8 +115,9 @@ public class Profile extends Auditable {
 
     // ── One-to-One Associations ───────────────────────────────────────────────
 
-    @OneToOne(mappedBy = "profile", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private Resume resume;
+    @OneToMany(mappedBy = "profile", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @BatchSize(size = 25)
+    private List<Resume> resumes = new ArrayList<>();
 
     @OneToOne(mappedBy = "profile", fetch = FetchType.LAZY)
     private User user;
@@ -208,8 +209,18 @@ public class Profile extends Auditable {
     public List<Certification> getCertifications() { return certifications; }
     public void setCertifications(List<Certification> certifications) { this.certifications = certifications; }
 
-    public Resume getResume() { return resume; }
-    public void setResume(Resume resume) { this.resume = resume; }
+    public void addResume(Resume resume) {
+        resumes.add(resume);
+        resume.setProfile(this);
+    }
+
+    public void removeResume(Resume resume) {
+        resumes.remove(resume);
+        resume.setProfile(null);
+    }
+
+    public List<Resume> getResumes() { return resumes; }
+    public void setResumes(List<Resume> resumes) { this.resumes = resumes; }
 
     public User getUser() { return user; }
     public void setUser(User user) { this.user = user; }

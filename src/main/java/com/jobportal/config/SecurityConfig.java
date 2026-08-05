@@ -110,6 +110,7 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET,
                         "/api/companies",
                         "/api/companies/{companyId}",
+                        "/api/companies/{companyId}/jobs",
                         "/api/companies/search"
                 ).permitAll()
 

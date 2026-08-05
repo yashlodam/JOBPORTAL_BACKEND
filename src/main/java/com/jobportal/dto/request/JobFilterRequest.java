@@ -8,64 +8,40 @@ import com.jobportal.domain.WorkingMode;
 
 public class JobFilterRequest {
 
-    // ----------------------------------------------------
-    // Keyword Search
-    // ----------------------------------------------------
-
+    // Search
     private String keyword;
 
-    // ----------------------------------------------------
-    // Category
-    // ----------------------------------------------------
+    // Company
+    private String companyName;
 
+    // Category
     private String category;
 
-    // ----------------------------------------------------
     // Location
-    // ----------------------------------------------------
-
     private String city;
     private String state;
     private String country;
 
-    // ----------------------------------------------------
     // Employment
-    // ----------------------------------------------------
-
     private JobType jobType;
     private WorkingMode workingMode;
     private ExperienceLevel experienceLevel;
 
-    // ----------------------------------------------------
-    // Experience Range
-    // ----------------------------------------------------
-
+    // Experience
     private Integer minimumExperience;
     private Integer maximumExperience;
 
-    // ----------------------------------------------------
     // Salary
-    // ----------------------------------------------------
-
     private Long minimumSalary;
     private Long maximumSalary;
 
-    // ----------------------------------------------------
     // Skills
-    // ----------------------------------------------------
-
     private List<String> skills;
 
-    // ----------------------------------------------------
-    // Qualification
-    // ----------------------------------------------------
-
+    // Education
     private String qualification;
 
-    // ----------------------------------------------------
-    // Metadata
-    // ----------------------------------------------------
-
+    // Flags
     private Boolean featured;
     private Boolean urgentHiring;
     private Boolean easyApply;
@@ -73,9 +49,7 @@ public class JobFilterRequest {
     public JobFilterRequest() {
     }
 
-    // ----------------------------------------------------
-    // Getters & Setters
-    // ----------------------------------------------------
+    // ---------------- Search ----------------
 
     public String getKeyword() {
         return keyword;
@@ -85,6 +59,18 @@ public class JobFilterRequest {
         this.keyword = keyword;
     }
 
+    // ---------------- Company ----------------
+
+    public String getCompanyName() {
+        return companyName;
+    }
+
+    public void setCompanyName(String companyName) {
+        this.companyName = companyName;
+    }
+
+    // ---------------- Category ----------------
+
     public String getCategory() {
         return category;
     }
@@ -92,6 +78,8 @@ public class JobFilterRequest {
     public void setCategory(String category) {
         this.category = category;
     }
+
+    // ---------------- Location ----------------
 
     public String getCity() {
         return city;
@@ -117,6 +105,8 @@ public class JobFilterRequest {
         this.country = country;
     }
 
+    // ---------------- Employment ----------------
+
     public JobType getJobType() {
         return jobType;
     }
@@ -141,6 +131,8 @@ public class JobFilterRequest {
         this.experienceLevel = experienceLevel;
     }
 
+    // ---------------- Experience ----------------
+
     public Integer getMinimumExperience() {
         return minimumExperience;
     }
@@ -156,6 +148,8 @@ public class JobFilterRequest {
     public void setMaximumExperience(Integer maximumExperience) {
         this.maximumExperience = maximumExperience;
     }
+
+    // ---------------- Salary ----------------
 
     public Long getMinimumSalary() {
         return minimumSalary;
@@ -173,6 +167,8 @@ public class JobFilterRequest {
         this.maximumSalary = maximumSalary;
     }
 
+    // ---------------- Skills ----------------
+
     public List<String> getSkills() {
         return skills;
     }
@@ -181,6 +177,8 @@ public class JobFilterRequest {
         this.skills = skills;
     }
 
+    // ---------------- Qualification ----------------
+
     public String getQualification() {
         return qualification;
     }
@@ -188,6 +186,8 @@ public class JobFilterRequest {
     public void setQualification(String qualification) {
         this.qualification = qualification;
     }
+
+    // ---------------- Flags ----------------
 
     public Boolean getFeatured() {
         return featured;

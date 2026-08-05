@@ -252,22 +252,4 @@ public class ProfileController {
         return ResponseEntity.ok(ApiResponse.success("Banner image updated",
                 profileService.updateBannerImage(file, authentication.getName())));
     }
-
-    // ── Resume ────────────────────────────────────────────────────────────────
-
-    @PostMapping("/me/resume")
-    public ResponseEntity<ApiResponse<ProfileResponse>> uploadResume(
-            @RequestParam("file") MultipartFile file,
-            Authentication authentication) throws Exception {
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success("Resume uploaded",
-                        profileService.uploadResume(file, authentication.getName())));
-    }
-
-    @DeleteMapping("/me/resume")
-    public ResponseEntity<ApiResponse<Void>> deleteResume(
-            Authentication authentication) throws JobPortalException {
-        profileService.deleteResume(authentication.getName());
-        return ResponseEntity.ok(ApiResponse.message("Resume deleted"));
-    }
 }

@@ -30,4 +30,7 @@ public interface CompanyService {
     CompanyResponseDTO uploadCoverImage(MultipartFile file, String email) throws Exception;
 
     Page<JobSummaryResponse> getMyCompanyJobs(String email, Pageable pageable) throws JobPortalException;
+
+    Page<JobSummaryResponse> getCompanyJobs(Long companyId, Pageable pageable)
+            throws JobPortalException;
 }

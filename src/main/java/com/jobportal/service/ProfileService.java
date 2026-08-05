@@ -66,8 +66,4 @@ public interface ProfileService {
     ProfileResponse updateProfileImage(MultipartFile file, String email) throws Exception;
 
     ProfileResponse updateBannerImage(MultipartFile file, String email) throws Exception;
-
-    ProfileResponse uploadResume(MultipartFile file, String email) throws Exception;
-
-    void deleteResume(String email) throws JobPortalException;
 }

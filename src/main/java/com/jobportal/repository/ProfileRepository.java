@@ -59,7 +59,7 @@ public interface ProfileRepository extends JpaRepository<Profile, Long> {
      *
      * <p>Always use this method before calling {@code toResponse()}.</p>
      */
-    @EntityGraph(attributePaths = {"user", "resume"})
+    @EntityGraph(attributePaths = {"user"})
     @Query("SELECT p FROM Profile p JOIN p.user u WHERE u.email = :email")
     Optional<Profile> findByUserEmailWithDetails(@Param("email") String email);
 

@@ -30,6 +30,7 @@ import com.jobportal.dto.response.JobSummaryResponse;
 import com.jobportal.dto.response.WorkModeResponse;
 import com.jobportal.exception.JobPortalException;
 import com.jobportal.service.JobService;
+import org.springframework.data.domain.Sort;
 
 import jakarta.validation.Valid;
 
@@ -160,35 +161,34 @@ public class JobController {
 
             @RequestParam(required = false) Boolean easyApply,
 
-            @PageableDefault(size = 10, sort = "createdAt")
+            @PageableDefault(
+                    size = 10,
+                    sort = "createdAt",
+                    direction = Sort.Direction.DESC
+            )
             Pageable pageable) {
-    	
-    	{
 
-            JobFilterRequest filter = new JobFilterRequest();
+        JobFilterRequest filter = new JobFilterRequest();
 
-            filter.setKeyword(keyword);
-            filter.setCity(city);
-            filter.setState(state);
-            filter.setCountry(country);
-            filter.setJobType(jobType);
-            filter.setWorkingMode(workingMode);
-            filter.setExperienceLevel(experienceLevel);
-            filter.setMinimumSalary(minimumSalary);
-            filter.setMaximumSalary(maximumSalary);
-            filter.setSkills(skills);
-            filter.setCategory(category);
-            filter.setQualification(qualification);
-            filter.setFeatured(featured);
-            filter.setUrgentHiring(urgentHiring);
-            filter.setEasyApply(easyApply);
+        filter.setKeyword(keyword);
+        filter.setCity(city);
+        filter.setState(state);
+        filter.setCountry(country);
+        filter.setJobType(jobType);
+        filter.setWorkingMode(workingMode);
+        filter.setExperienceLevel(experienceLevel);
+        filter.setMinimumSalary(minimumSalary);
+        filter.setMaximumSalary(maximumSalary);
+        filter.setSkills(skills);
+        filter.setCategory(category);
+        filter.setQualification(qualification);
+        filter.setFeatured(featured);
+        filter.setUrgentHiring(urgentHiring);
+        filter.setEasyApply(easyApply);
 
-            return ResponseEntity.ok(
-                    ApiResponse.success(
-                            jobService.filterJobs(filter, pageable)
-                    )
-            );
-        }
+        Page<JobSummaryResponse> jobs = jobService.filterJobs(filter, pageable);
+
+        return ResponseEntity.ok(ApiResponse.success(jobs));
     }
 
     /**
@@ -207,7 +207,7 @@ public class JobController {
                 jobService.filterJobs(request, pageable)));
     }
 
-    @GetMapping("/company/{companyId}")
+    @GetMapping("/company/jobs/{companyId}")
     public ResponseEntity<ApiResponse<Page<JobSummaryResponse>>> getCompanyJobs(
             @PathVariable Long companyId,
             @PageableDefault(size = 10, sort = "createdAt") Pageable pageable)

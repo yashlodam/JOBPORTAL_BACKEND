@@ -112,6 +112,19 @@ public class CompanyController {
             @PathVariable Long companyId) throws JobPortalException {
         return ResponseEntity.ok(ApiResponse.success(companyService.getCompanyById(companyId)));
     }
+    
+    @GetMapping("/{companyId}/jobs")
+    public ResponseEntity<ApiResponse<Page<JobSummaryResponse>>> getCompanyJobs(
+            @PathVariable Long companyId,
+            @PageableDefault(size = 10, sort = "createdAt") Pageable pageable)
+            throws JobPortalException {
+
+        return ResponseEntity.ok(
+                ApiResponse.success(
+                        companyService.getCompanyJobs(companyId, pageable)
+                )
+        );
+    }
 
     @GetMapping("/search")
     public ResponseEntity<ApiResponse<Page<CompanyResponseDTO>>> searchCompanies(

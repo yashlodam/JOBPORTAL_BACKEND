@@ -2,6 +2,7 @@ package com.jobportal.serviceImpl;
 
 import java.util.List;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -16,13 +17,15 @@ import com.jobportal.dto.response.CategoryResponse;
 import com.jobportal.dto.response.JobDetailResponse;
 import com.jobportal.dto.response.JobSummaryResponse;
 import com.jobportal.dto.response.WorkModeResponse;
-import com.jobportal.entity.Company;
 import com.jobportal.entity.Job;
 import com.jobportal.entity.Recruiter;
 import com.jobportal.entity.User;
+import com.jobportal.event.JobDeletedEvent;
+import com.jobportal.event.JobPostedEvent;
 import com.jobportal.exception.JobPortalException;
 import com.jobportal.mapper.JobMapper;
 import com.jobportal.repository.CompanyRepository;
+import com.jobportal.repository.JobApplicationRepository;
 import com.jobportal.repository.JobRepository;
 import com.jobportal.repository.RecruiterRepository;
 import com.jobportal.repository.UserRepository;
@@ -63,27 +66,42 @@ import com.jobportal.service.JobService;
  * <h4>View count increment</h4>
  * <p>Uses a dedicated {@code @Modifying} UPDATE query that touches only one
  * column — no entity load + save cycle needed.</p>
+ *
+ * <h3>Notifications (event-driven)</h3>
+ * <ul>
+ *   <li>{@link JobPostedEvent} — fired after a job is successfully created.
+ *       The listener logs/fans-out job-match notifications to matched users.</li>
+ *   <li>{@link JobDeletedEvent} — fired before entity deletion.
+ *       Carries all applicant IDs so the listener can notify them about
+ *       the job being removed.</li>
+ * </ul>
  */
 @Service
 public class JobServiceImpl implements JobService {
 
-    private final JobRepository jobRepository;
-    private final UserRepository userRepository;
-    private final RecruiterRepository recruiterRepository;
-    private final CompanyRepository companyRepository;
-    private final JobMapper jobMapper;
+    private final JobRepository           jobRepository;
+    private final UserRepository          userRepository;
+    private final RecruiterRepository     recruiterRepository;
+    private final CompanyRepository       companyRepository;
+    private final JobApplicationRepository jobApplicationRepository;
+    private final JobMapper               jobMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     public JobServiceImpl(
             JobRepository jobRepository,
             UserRepository userRepository,
             RecruiterRepository recruiterRepository,
             CompanyRepository companyRepository,
-            JobMapper jobMapper) {
-        this.jobRepository = jobRepository;
-        this.userRepository = userRepository;
-        this.recruiterRepository = recruiterRepository;
-        this.companyRepository = companyRepository;
-        this.jobMapper = jobMapper;
+            JobApplicationRepository jobApplicationRepository,
+            JobMapper jobMapper,
+            ApplicationEventPublisher eventPublisher) {
+        this.jobRepository            = jobRepository;
+        this.userRepository           = userRepository;
+        this.recruiterRepository      = recruiterRepository;
+        this.companyRepository        = companyRepository;
+        this.jobApplicationRepository = jobApplicationRepository;
+        this.jobMapper                = jobMapper;
+        this.eventPublisher           = eventPublisher;
     }
 
     // ── Create ───────────────────────────────────────────────────────────────
@@ -93,9 +111,8 @@ public class JobServiceImpl implements JobService {
     public JobDetailResponse createJob(JobRequest dto, String email) throws JobPortalException {
         User user = findUserByEmail(email);
         Recruiter recruiter = findRecruiterByUser(user);
-        Company company = recruiter.getCompany();
 
-        if (company == null) {
+        if (recruiter.getCompany() == null) {
             throw JobPortalException.badRequest(
                     "You must create a company profile before posting jobs.");
         }
@@ -103,10 +120,14 @@ public class JobServiceImpl implements JobService {
         Job job = new Job();
         jobMapper.applyRequest(dto, job);
         job.setRecruiter(recruiter);
-        job.setCompany(company);
+        job.setCompany(recruiter.getCompany());
         job.setStatus(JobStatus.OPEN);
 
         Job saved = jobRepository.save(job);
+
+        // ── Publish event: listener logs / fans-out job-match notifications ──
+        eventPublisher.publishEvent(new JobPostedEvent(this, user, saved));
+
         // Re-fetch with full details so the mapper can access company + recruiter.user
         return jobMapper.toDetail(findJobByIdWithDetails(saved.getId()));
     }
@@ -142,15 +163,27 @@ public class JobServiceImpl implements JobService {
         User user = findUserByEmail(email);
         Recruiter recruiter = findRecruiterByUser(user);
 
-        // Lightweight check — no EntityGraph needed
-        if (!jobRepository.existsByIdAndRecruiterId(jobId, recruiter.getId())) {
-            // Either job does not exist, or belongs to a different recruiter
-            Job job = jobRepository.findById(jobId)
-                    .orElseThrow(() -> JobPortalException.notFound("Job not found with id: " + jobId));
+        Job job = jobRepository.findByIdWithDetails(jobId)
+                .orElseThrow(() -> JobPortalException.notFound("Job not found with id: " + jobId));
+
+        if (!job.getRecruiter().getId().equals(recruiter.getId())) {
             throw JobPortalException.forbidden("You are not authorized to delete this job.");
         }
 
+        // ── Capture applicant IDs BEFORE deletion, while session is open ─────
+        List<Long> applicantUserIds =
+                jobApplicationRepository.findApplicantUserIdsByJobId(jobId);
+
+        String jobTitle        = job.getJobTitle();
+        int    totalApplicants = applicantUserIds.size();
+
         jobRepository.deleteById(jobId);
+
+        // ── Publish event: listener notifies all applicants (JOB_EXPIRED) ────
+        if (totalApplicants > 0) {
+            eventPublisher.publishEvent(new JobDeletedEvent(
+                    this, jobId, jobTitle, totalApplicants, applicantUserIds));
+        }
     }
 
     // ── Single Job Read ───────────────────────────────────────────────────────
@@ -170,7 +203,6 @@ public class JobServiceImpl implements JobService {
     @Override
     @Transactional
     public JobDetailResponse incrementViewAndGet(Long jobId) throws JobPortalException {
-        // Validate existence first to return a proper 404 if not found
         if (!jobRepository.existsById(jobId)) {
             throw JobPortalException.notFound("Job not found with id: " + jobId);
         }
@@ -261,15 +293,21 @@ public class JobServiceImpl implements JobService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<JobSummaryResponse> filterJobs(
-            JobFilterRequest request,
-            Pageable pageable) {
+    public Page<JobSummaryResponse> filterJobs(JobFilterRequest request, Pageable pageable) {
+        Specification<Job> specification = JobSpecification.buildFrom(request);
+        return jobRepository.findAll(specification, pageable).map(jobMapper::toSummary);
+    }
 
-        Specification<Job> specification =
-                JobSpecification.buildFrom(request);
+    @Override
+    @Transactional(readOnly = true)
+    public List<CategoryResponse> getCategories() {
+        return jobRepository.getCategoryCount();
+    }
 
-        return jobRepository.findAll(specification, pageable)
-                .map(jobMapper::toSummary);
+    @Override
+    @Transactional(readOnly = true)
+    public List<WorkModeResponse> getWorkModes() {
+        return jobRepository.getWorkModeCount();
     }
 
     // ── Private Helpers ───────────────────────────────────────────────────────
@@ -288,17 +326,5 @@ public class JobServiceImpl implements JobService {
     private Job findJobByIdWithDetails(Long jobId) throws JobPortalException {
         return jobRepository.findByIdWithDetails(jobId)
                 .orElseThrow(() -> JobPortalException.notFound("Job not found with id: " + jobId));
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public List<CategoryResponse> getCategories() {
-        return jobRepository.getCategoryCount();
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public List<WorkModeResponse> getWorkModes() {
-        return jobRepository.getWorkModeCount();
     }
 }

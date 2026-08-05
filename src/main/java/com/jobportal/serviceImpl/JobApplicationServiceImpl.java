@@ -1,12 +1,12 @@
 package com.jobportal.serviceImpl;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.jobportal.domain.AccountType;
-import com.jobportal.domain.NotificationType;
 import com.jobportal.dto.request.JobApplicationRequest;
 import com.jobportal.dto.request.UpdateApplicationStatusRequest;
 import com.jobportal.dto.response.JobApplicationResponse;
@@ -15,6 +15,9 @@ import com.jobportal.entity.JobApplication;
 import com.jobportal.entity.Recruiter;
 import com.jobportal.entity.Resume;
 import com.jobportal.entity.User;
+import com.jobportal.event.ApplicationStatusChangedEvent;
+import com.jobportal.event.ApplicationSubmittedEvent;
+import com.jobportal.event.ApplicationWithdrawnEvent;
 import com.jobportal.exception.JobPortalException;
 import com.jobportal.repository.JobApplicationRepository;
 import com.jobportal.repository.JobRepository;
@@ -22,17 +25,35 @@ import com.jobportal.repository.RecruiterRepository;
 import com.jobportal.repository.ResumeRepository;
 import com.jobportal.repository.UserRepository;
 import com.jobportal.service.JobApplicationService;
-import com.jobportal.service.NotificationService;
 
+/**
+ * Implements job-application business logic.
+ *
+ * <h3>Notification decoupling</h3>
+ * <p>This service no longer depends on {@link com.jobportal.service.NotificationService}
+ * directly. Instead, it publishes domain events via {@link ApplicationEventPublisher}.
+ * The {@link com.jobportal.listener.NotificationEventListener} handles these events
+ * and creates notifications independently, which:
+ * <ul>
+ *   <li>Eliminates tight coupling between the Application module and the Notification module.</li>
+ *   <li>Ensures notifications are only sent AFTER the business transaction commits
+ *       (via {@code @TransactionalEventListener(AFTER_COMMIT)}).</li>
+ *   <li>Makes it easy to add other listeners in the future (e.g. email, WebSocket push)
+ *       without modifying this class.</li>
+ * </ul>
+ * </p>
+ */
 @Service
 public class JobApplicationServiceImpl implements JobApplicationService {
 
     private final JobApplicationRepository applicationRepository;
-    private final JobRepository jobRepository;
-    private final UserRepository userRepository;
-    private final RecruiterRepository recruiterRepository;
-    private final ResumeRepository resumeRepository;
-    private final NotificationService notificationService;
+    private final JobRepository            jobRepository;
+    private final UserRepository           userRepository;
+    private final RecruiterRepository      recruiterRepository;
+    private final ResumeRepository         resumeRepository;
+    private final com.jobportal.repository.ProfileRepository profileRepository;
+    private final com.jobportal.service.ResumeService resumeService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public JobApplicationServiceImpl(
             JobApplicationRepository applicationRepository,
@@ -40,18 +61,26 @@ public class JobApplicationServiceImpl implements JobApplicationService {
             UserRepository userRepository,
             RecruiterRepository recruiterRepository,
             ResumeRepository resumeRepository,
-            NotificationService notificationService) {
+            com.jobportal.repository.ProfileRepository profileRepository,
+            com.jobportal.service.ResumeService resumeService,
+            ApplicationEventPublisher eventPublisher) {
         this.applicationRepository = applicationRepository;
-        this.jobRepository = jobRepository;
-        this.userRepository = userRepository;
-        this.recruiterRepository = recruiterRepository;
-        this.resumeRepository = resumeRepository;
-        this.notificationService = notificationService;
+        this.jobRepository         = jobRepository;
+        this.userRepository        = userRepository;
+        this.recruiterRepository   = recruiterRepository;
+        this.resumeRepository      = resumeRepository;
+        this.profileRepository     = profileRepository;
+        this.resumeService        = resumeService;
+        this.eventPublisher        = eventPublisher;
     }
+
+    // ── Apply ─────────────────────────────────────────────────────────────────
 
     @Override
     @Transactional
-    public JobApplicationResponse applyToJob(Long jobId, JobApplicationRequest request, String email)
+    public JobApplicationResponse applyToJob(Long jobId,
+                                              JobApplicationRequest request,
+                                              String email)
             throws JobPortalException {
         User applicant = findUserByEmail(email);
 
@@ -60,58 +89,78 @@ public class JobApplicationServiceImpl implements JobApplicationService {
         }
 
         Job job = jobRepository.findById(jobId)
-                .orElseThrow(() -> JobPortalException.notFound("Job not found with id: " + jobId));
+                .orElseThrow(() -> JobPortalException.notFound(
+                        "Job not found with id: " + jobId));
 
         if (applicationRepository.existsByApplicantIdAndJobId(applicant.getId(), jobId)) {
             throw JobPortalException.conflict("You have already applied for this job.");
+        }
+
+        Resume selectedResume = null;
+
+        if (request.getResumeId() != null) {
+            selectedResume = resumeRepository.findById(request.getResumeId())
+                    .orElseThrow(() -> JobPortalException.notFound("Resume not found with id: " + request.getResumeId()));
+            if (!selectedResume.getProfile().getUser().getId().equals(applicant.getId())) {
+                throw JobPortalException.forbidden("This resume does not belong to you.");
+            }
+        } else {
+            com.jobportal.entity.Profile profile = profileRepository.findByUserEmail(email)
+                    .orElseThrow(() -> JobPortalException.notFound("Profile not found."));
+
+            selectedResume = resumeRepository.findByProfileIdAndIsDefaultTrue(profile.getId())
+                    .orElseGet(() -> {
+                        java.util.List<Resume> userResumes = resumeRepository.findByProfileIdOrderByIsDefaultDescCreatedAtDesc(profile.getId());
+                        return userResumes.isEmpty() ? null : userResumes.get(0);
+                    });
+
+            if (selectedResume == null) {
+                throw JobPortalException.badRequest("Please upload a resume before applying.");
+            }
         }
 
         JobApplication application = new JobApplication();
         application.setJob(job);
         application.setApplicant(applicant);
         application.setCoverLetter(request.getCoverLetter());
+        application.setResume(selectedResume);
 
-        // Attach resume if provided
-        if (request.getResumeId() != null) {
-            Resume resume = resumeRepository.findById(request.getResumeId())
-                    .orElseThrow(() -> JobPortalException.notFound("Resume not found"));
-            if (!resume.getProfile().getUser().getId().equals(applicant.getId())) {
-                throw JobPortalException.forbidden("This resume does not belong to you.");
-            }
-            application.setResume(resume);
-        }
-
-        // Increment applicant count
+        // Increment applicant count atomically before saving the application
         job.setTotalApplicants(job.getTotalApplicants() + 1);
         jobRepository.save(job);
 
         JobApplication saved = applicationRepository.save(application);
 
-        // ── Notify the recruiter who posted the job ──────────────────────────
+        // ── Publish event: listener handles notification creation ──────────
         User recruiterUser = job.getRecruiter().getUser();
-        notificationService.send(
-                recruiterUser,
-                NotificationType.APPLICATION_RECEIVED,
-                "New Application Received",
-                applicant.getName() + " has applied for \"" + job.getJobTitle() + "\".",
-                saved.getId(),
-                "APPLICATION"
-        );
+        eventPublisher.publishEvent(new ApplicationSubmittedEvent(
+                this, applicant, recruiterUser, job, saved.getId()));
 
         return toResponse(saved);
     }
 
+    // ── Withdraw ──────────────────────────────────────────────────────────────
+
     @Override
     @Transactional
-    public void withdrawApplication(Long applicationId, String email) throws JobPortalException {
+    public void withdrawApplication(Long applicationId, String email)
+            throws JobPortalException {
         User applicant = findUserByEmail(email);
         JobApplication application = findApplicationById(applicationId);
 
         if (!application.getApplicant().getId().equals(applicant.getId())) {
-            throw JobPortalException.forbidden("You are not authorized to withdraw this application.");
+            throw JobPortalException.forbidden(
+                    "You are not authorized to withdraw this application.");
         }
 
         Job job = application.getJob();
+
+        // Capture data before deletion — listener runs after commit with these scalars
+        String applicantName   = applicant.getName();
+        Long   recruiterUserId = job.getRecruiter().getUser().getId();
+        String jobTitle        = job.getJobTitle();
+        Long   jobId           = job.getId();
+
         if (job.getTotalApplicants() > 0) {
             job.setTotalApplicants(job.getTotalApplicants() - 1);
             jobRepository.save(job);
@@ -119,18 +168,13 @@ public class JobApplicationServiceImpl implements JobApplicationService {
 
         applicationRepository.delete(application);
 
-        // ── Notify the recruiter about the withdrawal ────────────────────────
-        User recruiterUser = job.getRecruiter().getUser();
-        notificationService.send(
-                recruiterUser,
-                NotificationType.APPLICATION_WITHDRAWN,
-                "Application Withdrawn",
-                applicant.getName() + " has withdrawn their application for \""
-                        + job.getJobTitle() + "\".",
-                applicationId,
-                "APPLICATION"
-        );
+        // ── Publish event: listener handles notification creation ──────────
+        // Pass only scalars — entity is deleted; listener runs after commit
+        eventPublisher.publishEvent(new ApplicationWithdrawnEvent(
+                this, applicantName, recruiterUserId, jobTitle, jobId, applicationId));
     }
+
+    // ── Queries ───────────────────────────────────────────────────────────────
 
     @Override
     @Transactional(readOnly = true)
@@ -143,27 +187,34 @@ public class JobApplicationServiceImpl implements JobApplicationService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<JobApplicationResponse> getJobApplications(Long jobId, String email,
-            Pageable pageable) throws JobPortalException {
+    public Page<JobApplicationResponse> getJobApplications(Long jobId,
+                                                            String email,
+                                                            Pageable pageable)
+            throws JobPortalException {
         User user = findUserByEmail(email);
         Recruiter recruiter = recruiterRepository.findByUser(user)
                 .orElseThrow(() -> JobPortalException.forbidden(
                         "Only recruiters can view job applications."));
 
         Job job = jobRepository.findById(jobId)
-                .orElseThrow(() -> JobPortalException.notFound("Job not found"));
+                .orElseThrow(() -> JobPortalException.notFound("Job not found."));
 
         if (!job.getRecruiter().getId().equals(recruiter.getId())) {
-            throw JobPortalException.forbidden("You can only view applications for your own jobs.");
+            throw JobPortalException.forbidden(
+                    "You can only view applications for your own jobs.");
         }
 
         return applicationRepository.findByJobId(jobId, pageable).map(this::toResponse);
     }
 
+    // ── Status Update ─────────────────────────────────────────────────────────
+
     @Override
     @Transactional
     public JobApplicationResponse updateApplicationStatus(Long applicationId,
-            UpdateApplicationStatusRequest request, String email) throws JobPortalException {
+                                                           UpdateApplicationStatusRequest request,
+                                                           String email)
+            throws JobPortalException {
         User user = findUserByEmail(email);
         Recruiter recruiter = recruiterRepository.findByUser(user)
                 .orElseThrow(() -> JobPortalException.forbidden(
@@ -179,20 +230,9 @@ public class JobApplicationServiceImpl implements JobApplicationService {
         application.setStatus(request.getStatus());
         JobApplication updated = applicationRepository.save(application);
 
-        // ── Notify the applicant about the status change ─────────────────────
-        User applicant = application.getApplicant();
-        String jobTitle = application.getJob().getJobTitle();
-        String statusLabel = request.getStatus().name();
-
-        notificationService.send(
-                applicant,
-                NotificationType.APPLICATION_STATUS_UPDATED,
-                "Application Status Updated",
-                "Your application for \"" + jobTitle + "\" has been updated to: "
-                        + formatStatus(statusLabel) + ".",
-                applicationId,
-                "APPLICATION"
-        );
+        // ── Publish event: listener maps status → NotificationType ────────
+        eventPublisher.publishEvent(
+                new ApplicationStatusChangedEvent(this, updated, request.getStatus()));
 
         return toResponse(updated);
     }
@@ -201,22 +241,13 @@ public class JobApplicationServiceImpl implements JobApplicationService {
 
     private User findUserByEmail(String email) throws JobPortalException {
         return userRepository.findByEmail(email)
-                .orElseThrow(() -> JobPortalException.notFound("User not found"));
+                .orElseThrow(() -> JobPortalException.notFound("User not found."));
     }
 
     private JobApplication findApplicationById(Long id) throws JobPortalException {
         return applicationRepository.findById(id)
                 .orElseThrow(() -> JobPortalException.notFound(
                         "Application not found with id: " + id));
-    }
-
-    /**
-     * Converts enum constant to a human-readable label.
-     * E.g. "APPLICATION_STATUS_UPDATED" → "Application Status Updated"
-     */
-    private String formatStatus(String status) {
-        return status.charAt(0)
-                + status.substring(1).toLowerCase().replace('_', ' ');
     }
 
     private JobApplicationResponse toResponse(JobApplication app) {
@@ -242,6 +273,7 @@ public class JobApplicationServiceImpl implements JobApplicationService {
         }
         if (app.getResume() != null) {
             dto.setResumeUrl(app.getResume().getResumeUrl());
+            dto.setResume(resumeService.toResponse(app.getResume()));
         }
         return dto;
     }

@@ -30,10 +30,8 @@ public class CompanyResponseDTO {
 
     private String benefits;
 
-    // Statistics
-    private Integer totalRecruiters;
-
-    private Integer totalJobs;
+    private Long totalJobs;
+    private Long totalRecruiters;
 
     private LocalDateTime createdOn;
 
@@ -148,20 +146,20 @@ public class CompanyResponseDTO {
         this.benefits = benefits;
     }
 
-    public Integer getTotalRecruiters() {
-        return totalRecruiters;
-    }
-
-    public void setTotalRecruiters(Integer totalRecruiters) {
-        this.totalRecruiters = totalRecruiters;
-    }
-
-    public Integer getTotalJobs() {
+    public Long getTotalJobs() {
         return totalJobs;
     }
 
-    public void setTotalJobs(Integer totalJobs) {
+    public void setTotalJobs(Long totalJobs) {
         this.totalJobs = totalJobs;
+    }
+
+    public Long getTotalRecruiters() {
+        return totalRecruiters;
+    }
+
+    public void setTotalRecruiters(Long totalRecruiters) {
+        this.totalRecruiters = totalRecruiters;
     }
 
     public LocalDateTime getCreatedOn() {

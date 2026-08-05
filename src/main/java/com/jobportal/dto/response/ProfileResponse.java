@@ -48,6 +48,7 @@ public class ProfileResponse {
     // Resume
     private String resumeUrl;
     private String resumeName;
+    private List<ResumeResponse> resumes;
 
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
@@ -119,6 +120,9 @@ public class ProfileResponse {
 
     public String getResumeName() { return resumeName; }
     public void setResumeName(String resumeName) { this.resumeName = resumeName; }
+
+    public List<ResumeResponse> getResumes() { return resumes; }
+    public void setResumes(List<ResumeResponse> resumes) { this.resumes = resumes; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

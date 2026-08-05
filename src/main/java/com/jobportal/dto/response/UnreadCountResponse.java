@@ -1,19 +1,22 @@
 package com.jobportal.dto.response;
 
 /**
- * Summary returned by GET /api/notifications/unread-count.
- * Drives the notification bell badge on the frontend.
+ * Lightweight response for the notification bell badge count.
+ *
+ * <p>Intentionally minimal — polled frequently by the frontend to update the badge.
+ * {@code hasUnread} is a computed convenience field to avoid client-side {@code count > 0}
+ * logic and enables the frontend to conditionally render the badge without arithmetic.</p>
  */
 public class UnreadCountResponse {
 
-    private long unreadCount;
+    private final long count;
+    private final boolean hasUnread;
 
-    public UnreadCountResponse() {}
-
-    public UnreadCountResponse(long unreadCount) {
-        this.unreadCount = unreadCount;
+    public UnreadCountResponse(long count) {
+        this.count = count;
+        this.hasUnread = count > 0;
     }
 
-    public long getUnreadCount() { return unreadCount; }
-    public void setUnreadCount(long unreadCount) { this.unreadCount = unreadCount; }
+    public long getCount() { return count; }
+    public boolean isHasUnread() { return hasUnread; }
 }
