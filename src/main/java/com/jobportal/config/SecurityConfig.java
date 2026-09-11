@@ -89,8 +89,8 @@ public class SecurityConfig {
                 // ── Public Preflight Requests ──
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-                // ── Health Check (Render & Platform Monitors) ──
-                .requestMatchers("/health", "/api/health", "/actuator/health").permitAll()
+                // ── Health Check & Root (Render & Platform Monitors) ──
+                .requestMatchers("/", "/health", "/api/health", "/actuator/health").permitAll()
 
                 // ── Public Authentication Endpoints ──
                 .requestMatchers(

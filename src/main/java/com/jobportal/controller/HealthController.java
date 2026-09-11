@@ -17,12 +17,14 @@ public class HealthController {
 
     private final Instant startTime = Instant.now();
 
-    @GetMapping({"/health", "/api/health", "/actuator/health"})
+    @GetMapping({"/", "/health", "/api/health", "/actuator/health"})
     public ResponseEntity<Map<String, Object>> health() {
         Map<String, Object> response = new HashMap<>();
+        response.put("name", "JobPortal AI Backend API");
         response.put("status", "UP");
         response.put("timestamp", Instant.now().toString());
         response.put("uptime", (Instant.now().toEpochMilli() - startTime.toEpochMilli()) / 1000 + "s");
+        response.put("docs", "/swagger-ui.html");
         return ResponseEntity.ok(response);
     }
 }
