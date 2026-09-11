@@ -33,7 +33,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     private final JwtChannelInterceptor jwtChannelInterceptor;
     private final CookieHandshakeInterceptor cookieHandshakeInterceptor;
 
-    @Value("${app.cors.allowed-origins:http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://localhost:5174}")
+    @Value("${app.cors.allowed-origins:http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://localhost:5174,https://*.vercel.app,https://job-portal-frontend-rho-nine.vercel.app}")
     private String allowedOrigins;
 
     public WebSocketConfig(
@@ -57,10 +57,16 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                 .filter(s -> !s.isEmpty())
                 .toArray(String[]::new);
 
-        registry.addEndpoint("/ws")
+        // SockJS fallback endpoint (handles /ws and /api/ws)
+        registry.addEndpoint("/ws", "/api/ws")
             .setAllowedOriginPatterns(origins)
             .addInterceptors(cookieHandshakeInterceptor)
             .withSockJS();
+
+        // Native WebSocket endpoint
+        registry.addEndpoint("/ws", "/api/ws")
+            .setAllowedOriginPatterns(origins)
+            .addInterceptors(cookieHandshakeInterceptor);
     }
 
     @Override

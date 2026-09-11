@@ -26,6 +26,7 @@ import com.jobportal.entity.Education;
 import com.jobportal.entity.Experience;
 import com.jobportal.entity.Profile;
 import com.jobportal.entity.Resume;
+import com.jobportal.entity.User;
 import com.jobportal.event.ProfileCompletedEvent;
 import com.jobportal.exception.JobPortalException;
 import com.jobportal.repository.CertificationRepository;
@@ -33,8 +34,10 @@ import com.jobportal.repository.EducationRepository;
 import com.jobportal.repository.ExperienceRepository;
 import com.jobportal.repository.ProfileRepository;
 import com.jobportal.repository.ResumeRepository;
+import com.jobportal.repository.UserRepository;
 import com.jobportal.service.ProfileService;
 import com.jobportal.utility.FileStorageService;
+import java.util.Optional;
 
 /**
  * Profile service implementation.
@@ -58,6 +61,7 @@ import com.jobportal.utility.FileStorageService;
 public class ProfileServiceImpl implements ProfileService {
 
     private final ProfileRepository       profileRepository;
+    private final UserRepository          userRepository;
     private final ExperienceRepository    experienceRepository;
     private final EducationRepository     educationRepository;
     private final CertificationRepository certificationRepository;
@@ -68,6 +72,7 @@ public class ProfileServiceImpl implements ProfileService {
 
     public ProfileServiceImpl(
             ProfileRepository profileRepository,
+            UserRepository userRepository,
             ExperienceRepository experienceRepository,
             EducationRepository educationRepository,
             CertificationRepository certificationRepository,
@@ -76,6 +81,7 @@ public class ProfileServiceImpl implements ProfileService {
             ApplicationEventPublisher eventPublisher,
             com.jobportal.service.ResumeService resumeService) {
         this.profileRepository       = profileRepository;
+        this.userRepository          = userRepository;
         this.experienceRepository    = experienceRepository;
         this.educationRepository     = educationRepository;
         this.certificationRepository = certificationRepository;
@@ -422,14 +428,27 @@ public class ProfileServiceImpl implements ProfileService {
     // ── Private Helpers ───────────────────────────────────────────────────────
 
     private Profile findProfileByEmail(String email) throws JobPortalException {
-        return profileRepository.findByUserEmailWithDetails(email)
-                .orElseThrow(() -> JobPortalException.notFound("Profile not found"));
+        return findProfileByEmailWithDetails(email);
     }
 
     private Profile findProfileByEmailWithDetails(String email) throws JobPortalException {
-        return profileRepository.findByUserEmailWithDetails(email)
-                .orElseThrow(() -> JobPortalException.notFound(
-                        "Profile not found for email: " + email));
+        Optional<Profile> opt = profileRepository.findByUserEmailWithDetails(email);
+        if (opt.isPresent()) {
+            return opt.get();
+        }
+
+        // If no Profile row exists yet (e.g. registered as EMPLOYER or created before profile integration),
+        // initialize a profile for the user automatically so /api/profile/{email} never 404s.
+        User user = userRepository.findByEmail(email).orElse(null);
+        if (user != null) {
+            Profile profile = new Profile();
+            profile = profileRepository.save(profile);
+            user.setProfile(profile);
+            userRepository.save(user);
+            return profileRepository.findByUserEmailWithDetails(email).orElse(profile);
+        }
+
+        throw JobPortalException.notFound("Profile not found for email: " + email);
     }
 
     /**

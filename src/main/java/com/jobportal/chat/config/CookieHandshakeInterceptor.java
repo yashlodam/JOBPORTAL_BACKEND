@@ -61,30 +61,46 @@ public class CookieHandshakeInterceptor implements HandshakeInterceptor {
         HttpServletRequest httpRequest = servletRequest.getServletRequest();
         Cookie[] cookies = httpRequest.getCookies();
 
-        if (cookies == null) {
-            log.debug("[WS Handshake] No cookies present on upgrade request");
-            return true;
-        }
-
-        String cookieName = cookieProperties.getCookieName();
-        for (Cookie cookie : cookies) {
-            if (cookieName.equals(cookie.getName())) {
-                String jwt = cookie.getValue();
-                try {
-                    String email = jwtProvider.getEmailFromToken(jwt);
-                    if (email != null) {
-                        attributes.put(SESSION_ATTR_EMAIL, email);
-                        log.debug("[WS Handshake] JWT validated for: {}", email);
+        // 1. Try HttpOnly Cookie
+        if (cookies != null) {
+            String cookieName = cookieProperties.getCookieName();
+            for (Cookie cookie : cookies) {
+                if (cookieName.equals(cookie.getName())) {
+                    String jwt = cookie.getValue();
+                    try {
+                        String email = jwtProvider.getEmailFromToken(jwt);
+                        if (email != null) {
+                            attributes.put(SESSION_ATTR_EMAIL, email);
+                            log.debug("[WS Handshake] JWT validated via cookie for: {}", email);
+                            return true;
+                        }
+                    } catch (Exception e) {
+                        log.warn("[WS Handshake] Invalid JWT in cookie: {}", e.getMessage());
                     }
-                } catch (Exception e) {
-                    log.warn("[WS Handshake] Invalid JWT in cookie: {}", e.getMessage());
                 }
-                return true;
             }
         }
 
-        log.debug("[WS Handshake] Auth cookie '{}' not found on upgrade request", cookieName);
-        return true; // Always allow — STOMP interceptor will enforce auth on CONNECT
+        // 2. Fallback: query parameter ?token=... or ?access_token=... (for cross-domain SPAs)
+        String tokenParam = httpRequest.getParameter("token");
+        if (tokenParam == null || tokenParam.isBlank()) {
+            tokenParam = httpRequest.getParameter("access_token");
+        }
+        if (tokenParam != null && !tokenParam.isBlank()) {
+            try {
+                String email = jwtProvider.getEmailFromToken(tokenParam);
+                if (email != null) {
+                    attributes.put(SESSION_ATTR_EMAIL, email);
+                    log.debug("[WS Handshake] JWT validated via query param for: {}", email);
+                    return true;
+                }
+            } catch (Exception e) {
+                log.warn("[WS Handshake] Invalid JWT in query param: {}", e.getMessage());
+            }
+        }
+
+        log.debug("[WS Handshake] No cookie or query token found on upgrade request");
+        return true; // Always allow handshake; STOMP interceptor will enforce auth on CONNECT
     }
 
     @Override

@@ -75,6 +75,10 @@ public class NotificationController {
             Authentication authentication,
             @PageableDefault(size = 20, sort = "createdAt") Pageable pageable)
             throws JobPortalException {
+        if (authentication == null || !authentication.isAuthenticated()
+                || "anonymousUser".equalsIgnoreCase(authentication.getName())) {
+            return ResponseEntity.ok(ApiResponse.success(Page.empty(pageable)));
+        }
         return ResponseEntity.ok(ApiResponse.success(
                 notificationService.getMyNotifications(authentication.getName(), pageable)));
     }
@@ -89,6 +93,11 @@ public class NotificationController {
             @PathVariable Long id,
             Authentication authentication)
             throws JobPortalException {
+        if (authentication == null || !authentication.isAuthenticated()
+                || "anonymousUser".equalsIgnoreCase(authentication.getName())) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error("Not authenticated"));
+        }
         return ResponseEntity.ok(ApiResponse.success(
                 notificationService.getNotificationById(id, authentication.getName())));
     }
@@ -101,6 +110,10 @@ public class NotificationController {
             Authentication authentication,
             @PageableDefault(size = 20, sort = "createdAt") Pageable pageable)
             throws JobPortalException {
+        if (authentication == null || !authentication.isAuthenticated()
+                || "anonymousUser".equalsIgnoreCase(authentication.getName())) {
+            return ResponseEntity.ok(ApiResponse.success(Page.empty(pageable)));
+        }
         return ResponseEntity.ok(ApiResponse.success(
                 notificationService.getMyUnreadNotifications(authentication.getName(), pageable)));
     }
@@ -111,6 +124,10 @@ public class NotificationController {
     @GetMapping("/unread-count")
     public ResponseEntity<ApiResponse<UnreadCountResponse>> getUnreadCount(
             Authentication authentication) throws JobPortalException {
+        if (authentication == null || !authentication.isAuthenticated()
+                || "anonymousUser".equalsIgnoreCase(authentication.getName())) {
+            return ResponseEntity.ok(ApiResponse.success(new UnreadCountResponse(0L)));
+        }
         return ResponseEntity.ok(ApiResponse.success(
                 notificationService.getUnreadCount(authentication.getName())));
     }

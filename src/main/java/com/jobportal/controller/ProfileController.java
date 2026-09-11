@@ -56,7 +56,7 @@ public class ProfileController {
                 profileService.getMyProfile(authentication.getName())));
     }
 
-    @GetMapping("/{email}")
+    @GetMapping({"/{email:.+}", "/{email}"})
     public ResponseEntity<ApiResponse<ProfileResponse>> getProfileByEmail(
             @PathVariable String email) throws JobPortalException {
         return ResponseEntity.ok(ApiResponse.success(

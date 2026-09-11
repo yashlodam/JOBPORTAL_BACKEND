@@ -137,13 +137,21 @@ public class SecurityConfig {
                 ).permitAll()
 
                 // ── Public Profile View ──
-                .requestMatchers(HttpMethod.GET, "/api/profile/{email}").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/profile/{email}", "/api/profile/**").permitAll()
+
+                // ── Notifications Endpoints (Public access for count/feed, handled gracefully in controller) ──
+                .requestMatchers(
+                        "/api/notifications/unread-count",
+                        "/api/notifications",
+                        "/api/notifications/unread"
+                ).permitAll()
+                .requestMatchers("/api/notifications/**").authenticated()
 
                 // ── AI Career Copilot (Public & Authenticated) ──
                 .requestMatchers("/api/ai/copilot/**").permitAll()
 
                 // ── WebSocket Handshake (STOMP over SockJS) ──
-                .requestMatchers("/ws/**").permitAll()
+                .requestMatchers("/ws/**", "/api/ws/**").permitAll()
 
                 // ── Swagger / OpenAPI ──
                 .requestMatchers(
