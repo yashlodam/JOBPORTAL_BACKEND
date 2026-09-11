@@ -138,6 +138,7 @@ public class AuthController {
 
         AuthResponse authResponse = new AuthResponse(
                 "Login successful",
+                jwt,
                 user.getId(),
                 user.getName(),
                 user.getEmail(),
@@ -185,7 +186,8 @@ public class AuthController {
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<UserResponse>> me(Authentication authentication)
             throws JobPortalException {
-        if (authentication == null || !authentication.isAuthenticated()) {
+        if (authentication == null || !authentication.isAuthenticated()
+                || "anonymousUser".equalsIgnoreCase(authentication.getName())) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(ApiResponse.<UserResponse>error("Not authenticated"));
         }

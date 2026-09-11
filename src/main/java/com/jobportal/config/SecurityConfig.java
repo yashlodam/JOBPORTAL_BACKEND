@@ -99,11 +99,9 @@ public class SecurityConfig {
                         "/api/auth/logout",
                         "/api/auth/send-otp/**",
                         "/api/auth/verify-otp",
-                        "/api/auth/reset-password"
+                        "/api/auth/reset-password",
+                        "/api/auth/me"
                 ).permitAll()
-
-                // ── Auth restore (cookie-authenticated) ──
-                .requestMatchers(HttpMethod.GET, "/api/auth/me").authenticated()
 
                 // ── Public File Access ──
                 .requestMatchers("/uploads/**").permitAll()
