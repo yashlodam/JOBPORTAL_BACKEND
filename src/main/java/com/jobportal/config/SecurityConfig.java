@@ -29,7 +29,7 @@ public class SecurityConfig {
     private final UserDetailsService userDetailsService;
     private final CookieProperties cookieProperties;
 
-    @Value("${app.cors.allowed-origins:http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://localhost:5174}")
+    @Value("${app.cors.allowed-origins:http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://localhost:5174,https://*.vercel.app,https://job-portal-frontend-rho-nine.vercel.app}")
     private String allowedOrigins;
 
     public SecurityConfig(
