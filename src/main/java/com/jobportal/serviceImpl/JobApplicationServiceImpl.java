@@ -54,6 +54,9 @@ public class JobApplicationServiceImpl implements JobApplicationService {
     private final com.jobportal.repository.ProfileRepository profileRepository;
     private final com.jobportal.service.ResumeService resumeService;
     private final ApplicationEventPublisher eventPublisher;
+    private final com.jobportal.service.RecruiterAuthorizationService recruiterAuthorizationService;
+    private final com.jobportal.jobmatch.repository.JobMatchAnalysisRepository jobMatchAnalysisRepository;
+    private final com.jobportal.chat.repository.ConversationRepository conversationRepository;
 
     public JobApplicationServiceImpl(
             JobApplicationRepository applicationRepository,
@@ -63,7 +66,10 @@ public class JobApplicationServiceImpl implements JobApplicationService {
             ResumeRepository resumeRepository,
             com.jobportal.repository.ProfileRepository profileRepository,
             com.jobportal.service.ResumeService resumeService,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            com.jobportal.service.RecruiterAuthorizationService recruiterAuthorizationService,
+            com.jobportal.jobmatch.repository.JobMatchAnalysisRepository jobMatchAnalysisRepository,
+            com.jobportal.chat.repository.ConversationRepository conversationRepository) {
         this.applicationRepository = applicationRepository;
         this.jobRepository         = jobRepository;
         this.userRepository        = userRepository;
@@ -72,6 +78,9 @@ public class JobApplicationServiceImpl implements JobApplicationService {
         this.profileRepository     = profileRepository;
         this.resumeService        = resumeService;
         this.eventPublisher        = eventPublisher;
+        this.recruiterAuthorizationService = recruiterAuthorizationService;
+        this.jobMatchAnalysisRepository = jobMatchAnalysisRepository;
+        this.conversationRepository = conversationRepository;
     }
 
     // ── Apply ─────────────────────────────────────────────────────────────────
@@ -125,16 +134,24 @@ public class JobApplicationServiceImpl implements JobApplicationService {
         application.setCoverLetter(request.getCoverLetter());
         application.setResume(selectedResume);
 
-        // Increment applicant count atomically before saving the application
-        job.setTotalApplicants(job.getTotalApplicants() + 1);
-        jobRepository.save(job);
-
         JobApplication saved = applicationRepository.save(application);
 
-        // ── Publish event: listener handles notification creation ──────────
+        // Increment applicant count atomically in DB
+        jobRepository.incrementApplicantCount(job.getId());
+
+        // ── Capture scalars from loaded entities while session is OPEN ──────
+        // All event constructors now take only scalars so AFTER_COMMIT listeners
+        // never touch detached proxies.
         User recruiterUser = job.getRecruiter().getUser();
         eventPublisher.publishEvent(new ApplicationSubmittedEvent(
-                this, applicant, recruiterUser, job, saved.getId()));
+                this,
+                saved.getId(),
+                applicant.getId(),
+                applicant.getName(),
+                job.getId(),
+                job.getJobTitle(),
+                recruiterUser.getId()
+        ));
 
         return toResponse(saved);
     }
@@ -161,10 +178,12 @@ public class JobApplicationServiceImpl implements JobApplicationService {
         String jobTitle        = job.getJobTitle();
         Long   jobId           = job.getId();
 
-        if (job.getTotalApplicants() > 0) {
-            job.setTotalApplicants(job.getTotalApplicants() - 1);
-            jobRepository.save(job);
-        }
+        // Decrement applicant count atomically in DB
+        jobRepository.decrementApplicantCount(job.getId());
+
+        // ── Clean up dependent child records before deletion ───────────────
+        conversationRepository.detachJobApplication(applicationId);
+        jobMatchAnalysisRepository.deleteByJobApplicationId(applicationId);
 
         applicationRepository.delete(application);
 
@@ -191,10 +210,8 @@ public class JobApplicationServiceImpl implements JobApplicationService {
                                                             String email,
                                                             Pageable pageable)
             throws JobPortalException {
-        User user = findUserByEmail(email);
-        Recruiter recruiter = recruiterRepository.findByUser(user)
-                .orElseThrow(() -> JobPortalException.forbidden(
-                        "Only recruiters can view job applications."));
+        // ── SECURITY GATE: only APPROVED recruiters can view job applications ──
+        Recruiter recruiter = recruiterAuthorizationService.requireApprovedRecruiter(email);
 
         Job job = jobRepository.findById(jobId)
                 .orElseThrow(() -> JobPortalException.notFound("Job not found."));
@@ -215,10 +232,8 @@ public class JobApplicationServiceImpl implements JobApplicationService {
                                                            UpdateApplicationStatusRequest request,
                                                            String email)
             throws JobPortalException {
-        User user = findUserByEmail(email);
-        Recruiter recruiter = recruiterRepository.findByUser(user)
-                .orElseThrow(() -> JobPortalException.forbidden(
-                        "Only recruiters can update application status."));
+        // ── SECURITY GATE: only APPROVED recruiters can update application status ──
+        Recruiter recruiter = recruiterAuthorizationService.requireApprovedRecruiter(email);
 
         JobApplication application = findApplicationById(applicationId);
 
@@ -227,14 +242,66 @@ public class JobApplicationServiceImpl implements JobApplicationService {
                     "You are not authorized to update this application.");
         }
 
+        if (application.getStatus() == com.jobportal.domain.ApplicationStatus.WITHDRAWN) {
+            throw JobPortalException.badRequest("Cannot update status of a withdrawn application.");
+        }
+        if (request.getStatus() == com.jobportal.domain.ApplicationStatus.WITHDRAWN) {
+            throw JobPortalException.badRequest("Applications can only be withdrawn by the applicant.");
+        }
+
+        validateApplicationStatusTransition(application.getStatus(), request.getStatus());
+
         application.setStatus(request.getStatus());
         JobApplication updated = applicationRepository.save(application);
 
+        // ── Capture all scalars while session is OPEN ─────────────────────
+        // The listener runs AFTER_COMMIT in a new transaction.
+        // The original session is already closed by then, so any lazy
+        // proxy access on the entity would throw LazyInitializationException.
+        // We extract everything we need here — safe inside this transaction.
+        Long   applicantUserId = updated.getApplicant().getId();
+        String applicantName   = updated.getApplicant().getName();
+        String applicantEmail  = updated.getApplicant().getEmail();
+        String jobTitle        = updated.getJob().getJobTitle();
+        Long   jobId           = updated.getJob().getId();
+        String companyName     = updated.getJob().getCompany() != null
+                ? updated.getJob().getCompany().getCompanyName() : "";
+
         // ── Publish event: listener maps status → NotificationType ────────
-        eventPublisher.publishEvent(
-                new ApplicationStatusChangedEvent(this, updated, request.getStatus()));
+        eventPublisher.publishEvent(new ApplicationStatusChangedEvent(
+                this,
+                updated.getId(),
+                applicantUserId,
+                applicantName,
+                applicantEmail,
+                jobTitle,
+                jobId,
+                companyName,
+                request.getStatus(),
+                request.getNote()          // optional recruiter note (may be null)
+        ));
 
         return toResponse(updated);
+    }
+
+    private void validateApplicationStatusTransition(com.jobportal.domain.ApplicationStatus current, com.jobportal.domain.ApplicationStatus next) {
+        if (current == next) return;
+        if (current == com.jobportal.domain.ApplicationStatus.ACCEPTED) {
+            throw JobPortalException.badRequest("Cannot change status after offer has been accepted.");
+        }
+        boolean valid = switch (current) {
+            case APPLIED -> next == com.jobportal.domain.ApplicationStatus.REVIEWING || next == com.jobportal.domain.ApplicationStatus.SHORTLISTED || next == com.jobportal.domain.ApplicationStatus.REJECTED;
+            case REVIEWING -> next == com.jobportal.domain.ApplicationStatus.SHORTLISTED || next == com.jobportal.domain.ApplicationStatus.INTERVIEWING || next == com.jobportal.domain.ApplicationStatus.REJECTED;
+            case SHORTLISTED -> next == com.jobportal.domain.ApplicationStatus.INTERVIEWING || next == com.jobportal.domain.ApplicationStatus.OFFERED || next == com.jobportal.domain.ApplicationStatus.REJECTED;
+            case INTERVIEWING -> next == com.jobportal.domain.ApplicationStatus.OFFERED || next == com.jobportal.domain.ApplicationStatus.SHORTLISTED || next == com.jobportal.domain.ApplicationStatus.REJECTED;
+            case OFFERED -> next == com.jobportal.domain.ApplicationStatus.ACCEPTED || next == com.jobportal.domain.ApplicationStatus.REJECTED;
+            case REJECTED -> next == com.jobportal.domain.ApplicationStatus.REVIEWING || next == com.jobportal.domain.ApplicationStatus.SHORTLISTED;
+            default -> false;
+        };
+        if (!valid) {
+            throw JobPortalException.badRequest(
+                String.format("Invalid status transition from %s to %s.", current, next));
+        }
     }
 
     // ── Private Helpers ─────────────────────────────────────────────────────
@@ -245,7 +312,7 @@ public class JobApplicationServiceImpl implements JobApplicationService {
     }
 
     private JobApplication findApplicationById(Long id) throws JobPortalException {
-        return applicationRepository.findById(id)
+        return applicationRepository.findByIdWithDetails(id)
                 .orElseThrow(() -> JobPortalException.notFound(
                         "Application not found with id: " + id));
     }
@@ -261,6 +328,14 @@ public class JobApplicationServiceImpl implements JobApplicationService {
         if (app.getJob() != null) {
             dto.setJobId(app.getJob().getId());
             dto.setJobTitle(app.getJob().getJobTitle());
+            // Build location string from city/state/country
+            String loc = buildLocation(app.getJob().getCity(), app.getJob().getState(), app.getJob().getCountry());
+            dto.setJobLocation(loc);
+            if (app.getJob().getWorkingMode() != null) {
+                dto.setWorkMode(app.getJob().getWorkingMode().name());
+            }
+            dto.setMinimumSalary(app.getJob().getMinimumSalary());
+            dto.setMaximumSalary(app.getJob().getMaximumSalary());
             if (app.getJob().getCompany() != null) {
                 dto.setCompanyName(app.getJob().getCompany().getCompanyName());
                 dto.setCompanyLogo(app.getJob().getCompany().getLogo());
@@ -276,5 +351,14 @@ public class JobApplicationServiceImpl implements JobApplicationService {
             dto.setResume(resumeService.toResponse(app.getResume()));
         }
         return dto;
+    }
+
+    /** Compose a human-readable location string from city, state, country parts. */
+    private String buildLocation(String city, String state, String country) {
+        StringBuilder sb = new StringBuilder();
+        if (city    != null && !city.isBlank())    sb.append(city);
+        if (state   != null && !state.isBlank())   { if (sb.length() > 0) sb.append(", "); sb.append(state); }
+        if (country != null && !country.isBlank()) { if (sb.length() > 0) sb.append(", "); sb.append(country); }
+        return sb.length() > 0 ? sb.toString() : null;
     }
 }

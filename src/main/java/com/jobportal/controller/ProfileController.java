@@ -67,7 +67,7 @@ public class ProfileController {
 
     @PutMapping("/me/header")
     public ResponseEntity<ApiResponse<ProfileResponse>> updateHeader(
-            @RequestBody ProfileHeaderRequest request,
+            @Valid @RequestBody ProfileHeaderRequest request,
             Authentication authentication) throws JobPortalException {
         return ResponseEntity.ok(ApiResponse.success("Header updated",
                 profileService.updateHeader(request, authentication.getName())));
@@ -75,7 +75,7 @@ public class ProfileController {
 
     @PutMapping("/me/links")
     public ResponseEntity<ApiResponse<ProfileResponse>> updateLinks(
-            @RequestBody ProfileLinksRequest request,
+            @Valid @RequestBody ProfileLinksRequest request,
             Authentication authentication) throws JobPortalException {
         return ResponseEntity.ok(ApiResponse.success("Links updated",
                 profileService.updateLinks(request, authentication.getName())));
@@ -83,7 +83,7 @@ public class ProfileController {
 
     @PutMapping("/me/about")
     public ResponseEntity<ApiResponse<ProfileResponse>> updateAbout(
-            @RequestBody ProfileAboutRequest request,
+            @Valid @RequestBody ProfileAboutRequest request,
             Authentication authentication) throws JobPortalException {
         return ResponseEntity.ok(ApiResponse.success("About updated",
                 profileService.updateAbout(request, authentication.getName())));
@@ -93,7 +93,7 @@ public class ProfileController {
 
     @PutMapping("/me/skills")
     public ResponseEntity<ApiResponse<ProfileResponse>> updateSkills(
-            @RequestBody ProfileSkillsRequest request,
+            @Valid @RequestBody ProfileSkillsRequest request,
             Authentication authentication) throws JobPortalException {
         return ResponseEntity.ok(ApiResponse.success("Skills updated",
                 profileService.updateSkills(request, authentication.getName())));

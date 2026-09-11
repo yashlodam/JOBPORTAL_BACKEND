@@ -10,13 +10,11 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.jobportal.dto.request.JobApplicationRequest;
-import com.jobportal.dto.request.UpdateApplicationStatusRequest;
 import com.jobportal.dto.response.ApiResponse;
 import com.jobportal.dto.response.JobApplicationResponse;
 import com.jobportal.exception.JobPortalException;
@@ -25,8 +23,14 @@ import com.jobportal.service.JobApplicationService;
 import jakarta.validation.Valid;
 
 /**
- * Job Application controller — handles apply, withdraw, status updates.
- * All endpoints require authentication.
+ * Applicant Job Application controller — applicant-facing endpoints only.
+ *
+ * <p>Handles applying to jobs, withdrawing applications, and viewing own submissions.</p>
+ *
+ * <p>Recruiter-side operations (viewing applicants for a job, updating status)
+ * have been moved to {@link RecruiterController} at {@code /api/recruiter}.</p>
+ *
+ * <p>All endpoints require authentication.</p>
  */
 @RestController
 @RequestMapping("/api/applications")
@@ -40,6 +44,7 @@ public class JobApplicationController {
 
     /**
      * Apply to a job. Only APPLICANT account type is allowed.
+     * If no resumeId is provided, the applicant's default resume is used.
      */
     @PostMapping("/jobs/{jobId}")
     public ResponseEntity<ApiResponse<JobApplicationResponse>> applyToJob(
@@ -54,6 +59,7 @@ public class JobApplicationController {
 
     /**
      * Withdraw an application. Only the applicant who submitted it can withdraw.
+     * Decrements the job's total applicant count atomically.
      */
     @DeleteMapping("/{applicationId}")
     public ResponseEntity<ApiResponse<Void>> withdrawApplication(
@@ -65,6 +71,7 @@ public class JobApplicationController {
 
     /**
      * Get all applications submitted by the authenticated applicant.
+     * Paginated by creation date. Returns company name, job title, status, and resume info.
      */
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<Page<JobApplicationResponse>>> getMyApplications(
@@ -73,31 +80,5 @@ public class JobApplicationController {
             throws JobPortalException {
         return ResponseEntity.ok(ApiResponse.success(
                 jobApplicationService.getMyApplications(authentication.getName(), pageable)));
-    }
-
-    /**
-     * Get all applications for a job. Only the recruiter who owns the job can view.
-     */
-    @GetMapping("/jobs/{jobId}")
-    public ResponseEntity<ApiResponse<Page<JobApplicationResponse>>> getJobApplications(
-            @PathVariable Long jobId,
-            Authentication authentication,
-            @PageableDefault(size = 10, sort = "createdAt") Pageable pageable)
-            throws JobPortalException {
-        return ResponseEntity.ok(ApiResponse.success(
-                jobApplicationService.getJobApplications(jobId, authentication.getName(), pageable)));
-    }
-
-    /**
-     * Update application status. Only the recruiter who owns the job can update.
-     */
-    @PutMapping("/{applicationId}/status")
-    public ResponseEntity<ApiResponse<JobApplicationResponse>> updateApplicationStatus(
-            @PathVariable Long applicationId,
-            @Valid @RequestBody UpdateApplicationStatusRequest request,
-            Authentication authentication) throws JobPortalException {
-        return ResponseEntity.ok(ApiResponse.success("Status updated successfully",
-                jobApplicationService.updateApplicationStatus(
-                        applicationId, request, authentication.getName())));
     }
 }

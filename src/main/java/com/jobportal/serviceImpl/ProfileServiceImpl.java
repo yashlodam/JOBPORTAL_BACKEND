@@ -2,6 +2,7 @@ package com.jobportal.serviceImpl;
 
 import java.util.List;
 
+
 import org.hibernate.Hibernate;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -108,6 +109,9 @@ public class ProfileServiceImpl implements ProfileService {
     public ProfileResponse updateHeader(ProfileHeaderRequest request, String email)
             throws JobPortalException {
         Profile profile = findProfileByEmail(email);
+        if (request.getName() != null && !request.getName().isBlank() && profile.getUser() != null) {
+            profile.getUser().setName(request.getName().trim());
+        }
         if (request.getHeadline() != null)        profile.setHeadline(request.getHeadline().trim());
         if (request.getCurrentCompany() != null)  profile.setCurrentCompany(request.getCurrentCompany().trim());
         if (request.getLocation() != null)        profile.setLocation(request.getLocation().trim());
@@ -450,7 +454,7 @@ public class ProfileServiceImpl implements ProfileService {
 
         if (hasHeadline && hasAbout && hasSkills && (hasExperience || hasEducation) && hasResume) {
             if (profile.getUser() != null) {
-                eventPublisher.publishEvent(new ProfileCompletedEvent(this, profile.getUser()));
+                eventPublisher.publishEvent(new ProfileCompletedEvent(this, profile.getUser().getId(), profile.getUser().getEmail()));
             }
         }
     }

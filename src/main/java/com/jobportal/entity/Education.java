@@ -12,7 +12,12 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 
 @Entity
-@Table(name = "educations")
+@Table(
+    name = "educations",
+    indexes = {
+        @jakarta.persistence.Index(name = "idx_educations_profile_id", columnList = "profile_id")
+    }
+)
 public class Education extends Auditable {
 
     @Id

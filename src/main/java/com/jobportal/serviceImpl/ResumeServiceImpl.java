@@ -2,6 +2,8 @@ package com.jobportal.serviceImpl;
 
 import java.util.List;
 
+
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -11,8 +13,10 @@ import com.jobportal.dto.response.ResumeResponse;
 import com.jobportal.entity.Profile;
 import com.jobportal.entity.Resume;
 import com.jobportal.exception.JobPortalException;
+import com.jobportal.repository.JobApplicationRepository;
 import com.jobportal.repository.ProfileRepository;
 import com.jobportal.repository.ResumeRepository;
+import com.jobportal.resumeanalysis.repository.ResumeAnalysisRepository;
 import com.jobportal.service.ResumeService;
 import com.jobportal.utility.FileStorageService;
 
@@ -26,14 +30,23 @@ public class ResumeServiceImpl implements ResumeService {
     private final ResumeRepository resumeRepository;
     private final ProfileRepository profileRepository;
     private final FileStorageService fileStorageService;
+    private final ResumeAnalysisRepository analysisRepository;
+    private final JobApplicationRepository applicationRepository;
+    private final JdbcTemplate jdbcTemplate;
 
     public ResumeServiceImpl(
             ResumeRepository resumeRepository,
             ProfileRepository profileRepository,
-            FileStorageService fileStorageService) {
+            FileStorageService fileStorageService,
+            ResumeAnalysisRepository analysisRepository,
+            JobApplicationRepository applicationRepository,
+            JdbcTemplate jdbcTemplate) {
         this.resumeRepository = resumeRepository;
         this.profileRepository = profileRepository;
         this.fileStorageService = fileStorageService;
+        this.analysisRepository = analysisRepository;
+        this.applicationRepository = applicationRepository;
+        this.jdbcTemplate = jdbcTemplate;
     }
 
     @Override
@@ -45,7 +58,53 @@ public class ResumeServiceImpl implements ResumeService {
         }
 
         Profile profile = findProfileByEmail(email);
+        String originalFileName = file.getOriginalFilename();
 
+        String name = (resumeName != null && !resumeName.isBlank())
+                ? resumeName.trim()
+                : originalFileName;
+
+        // ── Deduplication: Check if any resumes with the same fileName already exist for this profile ──
+        List<Resume> existingList = resumeRepository.findByProfileIdAndFileNameOrderByIdDesc(profile.getId(), originalFileName);
+
+        if (!existingList.isEmpty()) {
+            Resume existing = existingList.get(0); // newest resume
+
+            // If there were multiple pre-existing duplicate rows, clean them up
+            if (existingList.size() > 1) {
+                for (int i = 1; i < existingList.size(); i++) {
+                    Resume duplicate = existingList.get(i);
+                    fileStorageService.delete(duplicate.getResumeUrl());
+                    applicationRepository.nullifyResumeReference(duplicate.getId());
+                    cleanResumeAnalysisData(duplicate.getId());
+                    resumeRepository.delete(duplicate);
+                }
+            }
+
+            // Delete old physical file of the main record
+            fileStorageService.delete(existing.getResumeUrl());
+
+            // Clear old resume analysis so fresh analysis will be generated for the updated file
+            cleanResumeAnalysisData(existing.getId());
+
+            // Store new physical file on disk
+            String newPath = fileStorageService.store(file, "resume");
+
+            existing.setResumeName(name);
+            existing.setResumeUrl(newPath);
+            existing.setFileSizeBytes(file.getSize());
+            existing.setContentType(file.getContentType());
+
+            if (Boolean.TRUE.equals(isDefault) && !Boolean.TRUE.equals(existing.getIsDefault())) {
+                resumeRepository.unsetDefaultResumesForProfile(profile.getId());
+                existing.setIsDefault(true);
+            }
+
+            Resume updated = resumeRepository.save(existing);
+            return toResponse(updated);
+        }
+
+        // ── New Resume Upload ──
         long existingCount = resumeRepository.countByProfileId(profile.getId());
         boolean shouldBeDefault = Boolean.TRUE.equals(isDefault) || existingCount == 0;
 
@@ -55,14 +114,10 @@ public class ResumeServiceImpl implements ResumeService {
 
         String path = fileStorageService.store(file, "resume");
 
-        String name = (resumeName != null && !resumeName.isBlank())
-                ? resumeName.trim()
-                : file.getOriginalFilename();
-
         Resume resume = new Resume();
         resume.setProfile(profile);
         resume.setResumeName(name);
-        resume.setFileName(file.getOriginalFilename());
+        resume.setFileName(originalFileName);
         resume.setResumeUrl(path);
         resume.setFileSizeBytes(file.getSize());
         resume.setContentType(file.getContentType());
@@ -118,7 +173,16 @@ public class ResumeServiceImpl implements ResumeService {
 
         boolean wasDefault = Boolean.TRUE.equals(resume.getIsDefault());
 
+        // 1. Delete physical file on disk
         fileStorageService.delete(resume.getResumeUrl());
+
+        // 2. Disassociate past job applications referencing this resume
+        applicationRepository.nullifyResumeReference(resume.getId());
+
+        // 3. Clean up resume_analysis rows and legacy foreign key tables
+        cleanResumeAnalysisData(resume.getId());
+
+        // 4. Delete the resume entity itself
         resumeRepository.delete(resume);
         resumeRepository.flush();
 
@@ -164,6 +228,31 @@ public class ResumeServiceImpl implements ResumeService {
     }
 
     // ── Private Helpers ───────────────────────────────────────────────────────
+
+    private void cleanResumeAnalysisData(Long resumeId) {
+        // Only delete from legacy child tables if they still physically exist in the DB.
+        // Attempting DELETE on a non-existent table throws an exception that aborts
+        // the entire PostgreSQL transaction (SQLState 25P02), breaking all subsequent statements.
+        String[] legacyTables = {
+            "resume_analysis_suggested_roles",
+            "resume_analysis_suggested_job_roles",
+            "resume_analysis_detected_skills",
+            "resume_analysis_strengths",
+            "resume_analysis_improvements",
+            "resume_analysis_missing_skills"
+        };
+        for (String t : legacyTables) {
+            Boolean exists = jdbcTemplate.queryForObject(
+                "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = ?)",
+                Boolean.class, t);
+            if (Boolean.TRUE.equals(exists)) {
+                jdbcTemplate.update(
+                    "DELETE FROM " + t + " WHERE resume_analysis_id IN (SELECT id FROM resume_analysis WHERE resume_id = ?)",
+                    resumeId);
+            }
+        }
+        analysisRepository.deleteByResumeId(resumeId);
+    }
 
     private Profile findProfileByEmail(String email) throws JobPortalException {
         return profileRepository.findByUserEmail(email)

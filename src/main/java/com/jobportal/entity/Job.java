@@ -229,6 +229,19 @@ public class Job extends Auditable {
     @BatchSize(size = 25)
     private List<JobApplication> applications = new ArrayList<>();
 
+    // ── Saved Jobs ───────────────────────────────────────────────────────────
+
+    /**
+     * CascadeType.ALL + orphanRemoval: deleting a Job also deletes all bookmarks.
+     */
+    @OneToMany(
+        mappedBy = "job",
+        cascade = CascadeType.ALL,
+        orphanRemoval = true,
+        fetch = FetchType.LAZY
+    )
+    private List<SavedJob> savedJobs = new ArrayList<>();
+
     public Job() {}
 
     // ── Getters & Setters ────────────────────────────────────────────────────
@@ -337,4 +350,7 @@ public class Job extends Auditable {
 
     public List<JobApplication> getApplications() { return applications; }
     public void setApplications(List<JobApplication> applications) { this.applications = applications; }
+
+    public List<SavedJob> getSavedJobs() { return savedJobs; }
+    public void setSavedJobs(List<SavedJob> savedJobs) { this.savedJobs = savedJobs; }
 }

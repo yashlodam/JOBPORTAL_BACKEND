@@ -73,4 +73,8 @@ public interface JobService {
     List<CategoryResponse> getCategories();
 
     List<WorkModeResponse> getWorkModes();
+
+    com.jobportal.dto.response.SearchSuggestionsResponse getSearchSuggestions(String query);
+
+    com.jobportal.dto.response.SearchFacetsResponse getSearchFacets(JobFilterRequest request);
 }

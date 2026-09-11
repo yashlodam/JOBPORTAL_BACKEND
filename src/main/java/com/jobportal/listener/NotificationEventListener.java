@@ -11,6 +11,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
 import com.jobportal.domain.ApplicationStatus;
 import com.jobportal.domain.NotificationPriority;
 import com.jobportal.domain.NotificationType;
+import com.jobportal.entity.User;
 import com.jobportal.event.ApplicationStatusChangedEvent;
 import com.jobportal.event.ApplicationSubmittedEvent;
 import com.jobportal.event.ApplicationWithdrawnEvent;
@@ -35,16 +36,14 @@ import com.jobportal.service.NotificationService;
  *
  * <h3>Transaction phase</h3>
  * <p>All listeners use {@code @TransactionalEventListener(AFTER_COMMIT)}.
- * This means notifications are only created AFTER the triggering transaction
- * commits successfully. If the business operation rolls back (e.g. a duplicate
- * application), no spurious notification is created. Each listener method runs
- * in its own new transaction (via the {@code @Transactional} on
- * {@link NotificationService#send}).</p>
+ * Notifications are only created AFTER the triggering transaction commits
+ * successfully — no spurious notifications on rollback.</p>
  *
- * <h3>Failure isolation</h3>
- * <p>A notification failure does NOT roll back the original business transaction
- * because the listener runs after commit. Errors are logged and swallowed
- * (to be replaced by a retry queue / dead-letter topic in a future iteration).</p>
+ * <h3>CRITICAL: Scalar Events & Proxy Execution</h3>
+ * <p>All event classes pass scalar fields only (IDs, names, titles).
+ * Each listener method runs in a fresh transaction ({@code REQUIRES_NEW}) after commit,
+ * loads the target {@link User} fresh from DB, and calls {@code notificationService.send()}
+ * directly on the injected bean proxy.</p>
  */
 @Component
 public class NotificationEventListener {
@@ -65,54 +64,50 @@ public class NotificationEventListener {
 
     // ── Job Events ───────────────────────────────────────────────────────────
 
-    /**
-     * Handles {@link JobPostedEvent}.
-     *
-     * <p>Currently logs the event for audit purposes. In a future iteration this
-     * will fan-out {@code NEW_JOB} / {@code FEATURED_JOB} notifications to users
-     * whose skills / preferences match the posted job (AI matching module).</p>
-     */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onJobPosted(JobPostedEvent event) {
         try {
-            NotificationType type = Boolean.TRUE.equals(event.getJob().getFeatured())
+            NotificationType type = event.isFeatured()
                     ? NotificationType.FEATURED_JOB
                     : NotificationType.NEW_JOB;
 
-            log.info("Job posted — type=[{}] jobId=[{}] recruiter=[{}]",
-                    type, event.getJob().getId(), event.getRecruiterUser().getEmail());
-
-            // TODO: fan-out to matched users via AI recommendation engine
-            // jobMatchService.findMatchedUsers(event.getJob())
-            //     .forEach(user -> notificationService.send(user, JOB_MATCH, ...));
+            log.info("Job posted — type=[{}] jobId=[{}] recruiterUserId=[{}]",
+                    type, event.getJobId(), event.getRecruiterUserId());
 
         } catch (Exception ex) {
             log.error("Failed to handle JobPostedEvent for job [{}]: {}",
-                    event.getJob().getId(), ex.getMessage(), ex);
+                    event.getJobId(), ex.getMessage(), ex);
         }
     }
 
     // ── Application Events ───────────────────────────────────────────────────
 
     /**
-     * Notifies the recruiter when a new application is submitted.
+     * Notifies the recruiter when a candidate submits a new application.
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onApplicationSubmitted(ApplicationSubmittedEvent event) {
         try {
+            User recruiterUser = userRepository.findById(event.getRecruiterUserId()).orElse(null);
+            if (recruiterUser == null) {
+                log.warn("onApplicationSubmitted: recruiter user id=[{}] not found — skipping",
+                        event.getRecruiterUserId());
+                return;
+            }
+
             notificationService.send(
-                    event.getRecruiterUser(),
+                    recruiterUser,
                     NotificationType.APPLICATION_RECEIVED,
                     NotificationPriority.MEDIUM,
                     "New Application Received",
-                    event.getApplicant().getName()
-                            + " applied for \"" + event.getJob().getJobTitle() + "\".",
-                    "/recruiter/applications/" + event.getApplicationId(),
+                    event.getApplicantName() + " applied for \"" + event.getJobTitle() + "\".",
+                    "/recruiter/applications",
                     event.getApplicationId(),
                     "APPLICATION"
             );
-            log.debug("APPLICATION_RECEIVED notification sent — applicationId=[{}]",
-                    event.getApplicationId());
+            log.info("APPLICATION_RECEIVED notification sent — appId=[{}] recruiterUserId=[{}]",
+                    event.getApplicationId(), event.getRecruiterUserId());
         } catch (Exception ex) {
             log.error("Failed to notify recruiter for ApplicationSubmittedEvent [{}]: {}",
                     event.getApplicationId(), ex.getMessage(), ex);
@@ -120,34 +115,39 @@ public class NotificationEventListener {
     }
 
     /**
-     * Notifies the applicant when their application status changes.
-     * Maps the raw {@link ApplicationStatus} to the most specific {@link NotificationType}.
+     * Notifies the applicant when the recruiter changes their application status
+     * (SHORTLISTED, INTERVIEWING, REJECTED, OFFERED, etc.).
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onApplicationStatusChanged(ApplicationStatusChangedEvent event) {
         try {
-            ApplicationStatus newStatus   = event.getNewStatus();
-            NotificationType  type        = mapStatusToType(newStatus);
-            NotificationPriority priority = mapStatusToPriority(newStatus);
-            String jobTitle = event.getApplication().getJob().getJobTitle();
-            Long appId      = event.getApplication().getId();
+            ApplicationStatus    status = event.getNewStatus();
+            NotificationType     type   = mapStatusToType(status);
+            NotificationPriority prio   = mapStatusToPriority(status);
+            String title     = buildStatusTitle(status, event.getCompanyName());
+            String body      = buildStatusBody(status,
+                                               event.getJobTitle(),
+                                               event.getCompanyName(),
+                                               event.getRecruiterNote());
+            String actionUrl = "/my-jobs/applied";
 
-            notificationService.send(
-                    event.getApplication().getApplicant(),
-                    type,
-                    priority,
-                    buildStatusTitle(newStatus),
-                    "Your application for \"" + jobTitle + "\" is now: "
-                            + formatStatus(newStatus.name()) + ".",
-                    "/applications/" + appId,
-                    appId,
-                    "APPLICATION"
-            );
-            log.debug("Status-change notification sent — applicationId=[{}] newStatus=[{}]",
-                    appId, newStatus);
+            User applicant = userRepository.findById(event.getApplicantUserId()).orElse(null);
+            if (applicant == null) {
+                log.warn("onApplicationStatusChanged: applicant id=[{}] not found — skipping",
+                        event.getApplicantUserId());
+                return;
+            }
+
+            notificationService.send(applicant, type, prio, title, body,
+                    actionUrl, event.getApplicationId(), "APPLICATION");
+
+            log.info("Status notification sent — app=[{}] status=[{}] applicant=[{}]",
+                    event.getApplicationId(), status, event.getApplicantEmail());
+
         } catch (Exception ex) {
-            log.error("Failed to notify applicant for ApplicationStatusChangedEvent: {}",
-                    ex.getMessage(), ex);
+            log.error("Failed to send status notification for application [{}]: {}",
+                    event.getApplicationId(), ex.getMessage(), ex);
         }
     }
 
@@ -155,126 +155,98 @@ public class NotificationEventListener {
      * Notifies the recruiter when a candidate withdraws their application.
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onApplicationWithdrawn(ApplicationWithdrawnEvent event) {
         try {
-            userRepository.findById(event.getRecruiterUserId()).ifPresent(recruiterUser ->
-                    notificationService.send(
-                            recruiterUser,
-                            NotificationType.APPLICATION_WITHDRAWN,
-                            NotificationPriority.LOW,
-                            "Application Withdrawn",
-                            event.getApplicantName()
-                                    + " withdrew their application for \""
-                                    + event.getJobTitle() + "\".",
-                            "/recruiter/jobs/" + event.getJobId(),
-                            event.getApplicationId(),
-                            "APPLICATION"
-                    )
+            User recruiterUser = userRepository.findById(event.getRecruiterUserId()).orElse(null);
+            if (recruiterUser == null) {
+                log.warn("onApplicationWithdrawn: recruiter id=[{}] not found — skipping",
+                        event.getRecruiterUserId());
+                return;
+            }
+
+            notificationService.send(
+                    recruiterUser,
+                    NotificationType.APPLICATION_WITHDRAWN,
+                    NotificationPriority.LOW,
+                    "Application Withdrawn",
+                    event.getApplicantName() + " withdrew their application for \"" + event.getJobTitle() + "\".",
+                    "/recruiter/applications",
+                    event.getApplicationId(),
+                    "APPLICATION"
             );
-            log.debug("APPLICATION_WITHDRAWN notification sent — applicationId=[{}]",
-                    event.getApplicationId());
+            log.info("APPLICATION_WITHDRAWN notification sent — appId=[{}]", event.getApplicationId());
         } catch (Exception ex) {
             log.error("Failed to notify recruiter for ApplicationWithdrawnEvent [{}]: {}",
                     event.getApplicationId(), ex.getMessage(), ex);
         }
     }
 
-    // ── Private Helpers ──────────────────────────────────────────────────────
-
-    private NotificationType mapStatusToType(ApplicationStatus status) {
-        return switch (status) {
-            case SHORTLISTED  -> NotificationType.APPLICATION_SHORTLISTED;
-            case REJECTED     -> NotificationType.APPLICATION_REJECTED;
-            case INTERVIEWING -> NotificationType.INTERVIEW_SCHEDULED;
-            case OFFERED      -> NotificationType.OFFER_RECEIVED;
-            default           -> NotificationType.APPLICATION_STATUS_UPDATED;
-        };
-    }
-
-    private NotificationPriority mapStatusToPriority(ApplicationStatus status) {
-        return switch (status) {
-            case SHORTLISTED, INTERVIEWING -> NotificationPriority.HIGH;
-            case OFFERED                   -> NotificationPriority.HIGH;
-            case REJECTED                  -> NotificationPriority.MEDIUM;
-            default                        -> NotificationPriority.LOW;
-        };
-    }
-
-    private String buildStatusTitle(ApplicationStatus status) {
-        return switch (status) {
-            case SHORTLISTED  -> "Congratulations! You've been Shortlisted";
-            case REJECTED     -> "Application Update";
-            case INTERVIEWING -> "Interview Scheduled!";
-            case OFFERED      -> "Offer Received!";
-            default           -> "Application Status Updated";
-        };
-    }
-
-    /**
-     * Converts an enum constant name to a human-readable label.
-     * e.g. {@code "INTERVIEW_SCHEDULED"} → {@code "Interview Scheduled"}
-     */
-    private String formatStatus(String status) {
-        String lower = status.toLowerCase().replace('_', ' ');
-        return Character.toUpperCase(lower.charAt(0)) + lower.substring(1);
-    }
-
     // ── User / Auth Events ───────────────────────────────────────────────────
 
     /**
-     * Sends a welcome {@code ACCOUNT} notification when a new user registers.
+     * Sends a welcome ACCOUNT notification when a user registers.
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onUserRegistered(UserRegisteredEvent event) {
         try {
-            String roleLabel = switch (event.getUser().getAccountType()) {
+            User user = userRepository.findById(event.getUserId()).orElse(null);
+            if (user == null) {
+                log.warn("onUserRegistered: user id=[{}] not found — skipping", event.getUserId());
+                return;
+            }
+
+            String roleLabel = switch (event.getAccountType()) {
                 case APPLICANT -> "job seeker";
                 case EMPLOYER  -> "recruiter";
                 default        -> "member";
             };
+
             notificationService.send(
-                    event.getUser(),
+                    user,
                     NotificationType.ACCOUNT,
                     NotificationPriority.LOW,
                     "Welcome to Velora! 🎉",
-                    "Hi " + event.getUser().getName() + "! Your " + roleLabel
-                            + " account is ready. Complete your profile to get started.",
+                    "Hi " + event.getName() + "! Your " + roleLabel + " account is ready. Complete your profile to get started.",
                     "/profile",
                     null,
                     null
             );
-            log.debug("Welcome notification sent to [{}]", event.getUser().getEmail());
+            log.info("Welcome notification sent to [{}]", event.getEmail());
         } catch (Exception ex) {
             log.error("Failed to send welcome notification for [{}]: {}",
-                    event.getUser().getEmail(), ex.getMessage(), ex);
+                    event.getEmail(), ex.getMessage(), ex);
         }
     }
 
     /**
-     * Sends a {@code SECURITY} alert when a user resets their password.
-     * This is a standard security best-practice (LinkedIn, Google, GitHub).
+     * Sends a SECURITY alert when a user resets their password.
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onPasswordReset(PasswordResetEvent event) {
         try {
+            User user = userRepository.findById(event.getUserId()).orElse(null);
+            if (user == null) {
+                log.warn("onPasswordReset: user id=[{}] not found — skipping", event.getUserId());
+                return;
+            }
+
             notificationService.send(
-                    event.getUser(),
+                    user,
                     NotificationType.SECURITY,
                     NotificationPriority.HIGH,
                     "Password Changed Successfully",
-                    "Your Velora account password was just changed. "
-                            + "If you did not make this change, contact support immediately.",
-                    "/settings/security",
+                    "Your Velora account password was just changed. If you did not make this change, contact support immediately.",
+                    "/settings",
                     null,
                     null
             );
-            log.debug("SECURITY notification sent for password reset [{}]",
-                    event.getUser().getEmail());
+            log.info("SECURITY notification sent for password reset [{}]", event.getEmail());
         } catch (Exception ex) {
             log.error("Failed to send password-reset SECURITY notification for [{}]: {}",
-                    event.getUser().getEmail(), ex.getMessage(), ex);
+                    event.getEmail(), ex.getMessage(), ex);
         }
     }
 
@@ -287,67 +259,68 @@ public class NotificationEventListener {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onCompanyProfileUpdated(CompanyProfileUpdatedEvent event) {
         try {
+            User recruiterUser = userRepository.findById(event.getRecruiterUserId()).orElse(null);
+            if (recruiterUser == null) {
+                log.warn("onCompanyProfileUpdated: recruiter user id=[{}] not found — skipping",
+                        event.getRecruiterUserId());
+                return;
+            }
+
             boolean isNew = event.isCreated();
             notificationService.send(
-                    event.getRecruiterUser(),
+                    recruiterUser,
                     NotificationType.COMPANY_UPDATE,
                     NotificationPriority.LOW,
-                    isNew ? "Company Profile Created! 🏢"
-                          : "Company Profile Updated",
-                    isNew ? "Your company \"" + event.getCompany().getCompanyName()
-                                    + "\" is live. You can now post jobs!"
-                          : "Your company \"" + event.getCompany().getCompanyName()
-                                    + "\" profile has been updated successfully.",
-                    "/company/" + event.getCompany().getId(),
-                    event.getCompany().getId(),
+                    isNew ? "Company Profile Created! 🏢" : "Company Profile Updated",
+                    isNew ? "Your company \"" + event.getCompanyName() + "\" is live. You can now post jobs!"
+                          : "Your company \"" + event.getCompanyName() + "\" profile has been updated successfully.",
+                    "/recruiter/company",
+                    event.getCompanyId(),
                     "COMPANY"
             );
-            log.debug("COMPANY_UPDATE notification sent to [{}] for company [{}]",
-                    event.getRecruiterUser().getEmail(), event.getCompany().getId());
+            log.info("COMPANY_UPDATE notification sent to [{}] for company [{}]",
+                    recruiterUser.getEmail(), event.getCompanyId());
         } catch (Exception ex) {
-            log.error("Failed to send company notification for [{}]: {}",
-                    event.getRecruiterUser().getEmail(), ex.getMessage(), ex);
+            log.error("Failed to send company notification for recruiterId [{}]: {}",
+                    event.getRecruiterUserId(), ex.getMessage(), ex);
         }
     }
 
     // ── Profile Events ───────────────────────────────────────────────────────
 
     /**
-     * Sends a one-time {@code PROFILE_COMPLETED} celebration notification.
-     *
-     * <p>De-duplication: the notification is only created if the user has never
-     * received a {@code PROFILE_COMPLETED} notification before. This prevents
-     * the celebration from firing every time the user edits their already-complete
-     * profile.</p>
+     * Sends a one-time PROFILE_COMPLETED celebration notification.
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onProfileCompleted(ProfileCompletedEvent event) {
         try {
-            // De-duplicate: skip if a PROFILE_COMPLETED notification already exists
-            boolean alreadyNotified = notificationRepository
-                    .existsByRecipientIdAndType(
-                            event.getUser().getId(), NotificationType.PROFILE_COMPLETED);
+            boolean alreadyNotified = notificationRepository.existsByRecipientIdAndType(
+                    event.getUserId(), NotificationType.PROFILE_COMPLETED);
             if (alreadyNotified) {
                 return;
             }
 
+            User user = userRepository.findById(event.getUserId()).orElse(null);
+            if (user == null) {
+                log.warn("onProfileCompleted: user id=[{}] not found — skipping", event.getUserId());
+                return;
+            }
+
             notificationService.send(
-                    event.getUser(),
+                    user,
                     NotificationType.PROFILE_COMPLETED,
                     NotificationPriority.MEDIUM,
                     "Your Profile is 100% Complete! ⭐",
-                    "Great job! A complete profile gets 5x more recruiter views. "
-                            + "Keep it updated to stay visible.",
+                    "Great job! A complete profile gets 5x more recruiter views. Keep it updated to stay visible.",
                     "/profile",
                     null,
                     null
             );
-            log.info("PROFILE_COMPLETED notification sent to [{}]",
-                    event.getUser().getEmail());
+            log.info("PROFILE_COMPLETED notification sent to [{}]", event.getEmail());
         } catch (Exception ex) {
             log.error("Failed to send profile-completed notification for [{}]: {}",
-                    event.getUser().getEmail(), ex.getMessage(), ex);
+                    event.getEmail(), ex.getMessage(), ex);
         }
     }
 
@@ -355,29 +328,30 @@ public class NotificationEventListener {
 
     /**
      * Notifies all applicants when a job they applied to has been deleted.
-     * Sends one {@code JOB_EXPIRED} notification per applicant.
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void onJobDeleted(JobDeletedEvent event) {
-        if (event.getApplicantUserIds().isEmpty()) {
+        if (event.getApplicantUserIds() == null || event.getApplicantUserIds().isEmpty()) {
             return;
         }
         try {
             for (Long userId : event.getApplicantUserIds()) {
-                userRepository.findById(userId).ifPresent(applicant ->
-                        notificationService.send(
-                                applicant,
-                                NotificationType.JOB_EXPIRED,
-                                NotificationPriority.MEDIUM,
-                                "A Job You Applied to Has Been Removed",
-                                "The job \"" + event.getJobTitle()
-                                        + "\" has been removed by the recruiter. "
-                                        + "Explore similar open positions.",
-                                "/jobs",
-                                event.getJobId(),
-                                "JOB"
-                        )
+                User applicant = userRepository.findById(userId).orElse(null);
+                if (applicant == null) {
+                    log.warn("onJobDeleted: user id=[{}] not found — skipping", userId);
+                    continue;
+                }
+
+                notificationService.send(
+                        applicant,
+                        NotificationType.JOB_EXPIRED,
+                        NotificationPriority.MEDIUM,
+                        "A Job You Applied to Has Been Removed",
+                        "The job \"" + event.getJobTitle() + "\" has been removed by the recruiter. Explore similar open positions.",
+                        "/find-jobs",
+                        event.getJobId(),
+                        "JOB"
                 );
             }
             log.info("JOB_EXPIRED notifications sent to {} applicant(s) for job [{}]",
@@ -387,4 +361,171 @@ public class NotificationEventListener {
                     event.getJobId(), ex.getMessage(), ex);
         }
     }
+
+    // ── Private Helpers ──────────────────────────────────────────────────────
+
+    private NotificationType mapStatusToType(ApplicationStatus status) {
+        return switch (status) {
+            case REVIEWING    -> NotificationType.APPLICATION_STATUS_UPDATED;
+            case SHORTLISTED  -> NotificationType.APPLICATION_SHORTLISTED;
+            case REJECTED     -> NotificationType.APPLICATION_REJECTED;
+            case INTERVIEWING -> NotificationType.INTERVIEW_SCHEDULED;
+            case OFFERED      -> NotificationType.OFFER_RECEIVED;
+            case ACCEPTED     -> NotificationType.OFFER_ACCEPTED;
+            default           -> NotificationType.APPLICATION_STATUS_UPDATED;
+        };
+    }
+
+    private NotificationPriority mapStatusToPriority(ApplicationStatus status) {
+        return switch (status) {
+            case SHORTLISTED, INTERVIEWING, OFFERED, ACCEPTED -> NotificationPriority.HIGH;
+            case REJECTED                                      -> NotificationPriority.MEDIUM;
+            default                                            -> NotificationPriority.LOW;
+        };
+    }
+
+    private String buildStatusTitle(ApplicationStatus status, String companyName) {
+        String company = (companyName != null && !companyName.isBlank()) ? companyName : "the company";
+        return switch (status) {
+            case REVIEWING    -> "Application Under Review";
+            case SHORTLISTED  -> "🎉 You've Been Shortlisted!";
+            case INTERVIEWING -> "📅 Interview Scheduled!";
+            case OFFERED      -> "🏆 You've Received an Offer from " + company + "!";
+            case ACCEPTED     -> "✅ Offer Accepted";
+            case REJECTED     -> "Application Update from " + company;
+            default           -> "Application Status Updated";
+        };
+    }
+
+    private String buildStatusBody(ApplicationStatus status,
+                                    String jobTitle,
+                                    String companyName,
+                                    String recruiterNote) {
+        String job     = (jobTitle    != null && !jobTitle.isBlank())    ? "\"" + jobTitle + "\""  : "your application";
+        String company = (companyName != null && !companyName.isBlank()) ? companyName             : "the company";
+        String note    = (recruiterNote != null && !recruiterNote.isBlank())
+                ? " Note from recruiter: \"" + recruiterNote + "\""
+                : "";
+
+        return switch (status) {
+            case REVIEWING ->
+                    "Good news! " + company + " is actively reviewing your application for "
+                    + job + ". Stay tuned for updates." + note;
+
+            case SHORTLISTED ->
+                    "Congratulations! Your profile stood out and you've been shortlisted"
+                    + " for " + job + " at " + company + "."
+                    + " Expect an interview invitation soon." + note;
+
+            case INTERVIEWING ->
+                    "Great news! " + company + " would like to interview you for " + job + "."
+                    + " Check your profile for details and prepare well. Good luck!" + note;
+
+            case OFFERED ->
+                    "Exciting news! " + company + " has extended a job offer to you for "
+                    + job + ". Review and respond to your offer in the portal." + note;
+
+            case ACCEPTED ->
+                    "Your acceptance for " + job + " at " + company + " has been confirmed."
+                    + " Congratulations on your new opportunity!" + note;
+
+            case REJECTED ->
+                    "Thank you for your interest in " + job + " at " + company + "."
+                    + " After careful consideration, they've decided to move forward"
+                    + " with other candidates. Don't be discouraged — keep applying!" + note;
+
+            default ->
+                    "Your application status for " + job + " has been updated to: "
+                    + formatStatus(status.name()) + "." + note;
+        };
+    }
+
+    // ── Recruiter Verification Events ────────────────────────────────────────
+
+    /**
+     * Dispatches in-app notifications for recruiter verification lifecycle events:
+     * VERIFICATION_SUBMITTED, RECRUITER_APPROVED, RECRUITER_REJECTED, RECRUITER_SUSPENDED.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onRecruiterVerificationChanged(com.jobportal.event.RecruiterVerificationEvent event) {
+        try {
+            User user = userRepository.findById(event.getRecruiterUserId()).orElse(null);
+            if (user == null) {
+                log.warn("onRecruiterVerificationChanged: user id=[{}] not found — skipping",
+                        event.getRecruiterUserId());
+                return;
+            }
+
+            com.jobportal.domain.RecruiterStatus status = event.getNewStatus();
+            NotificationType type;
+            NotificationPriority priority;
+            String title;
+            String body;
+            String actionUrl;
+
+            switch (status) {
+                case PENDING_VERIFICATION -> {
+                    type = NotificationType.VERIFICATION_SUBMITTED;
+                    priority = NotificationPriority.MEDIUM;
+                    title = "Verification Submitted";
+                    body = "Your recruiter verification is submitted and is currently under review by our admin team.";
+                    actionUrl = "/recruiter/verification";
+                }
+                case APPROVED -> {
+                    type = NotificationType.RECRUITER_APPROVED;
+                    priority = NotificationPriority.HIGH;
+                    title = "Recruiter Account Approved! 🎉";
+                    body = "Congratulations " + event.getRecruiterName() + "! Your recruiter account has been approved. You now have full access to post jobs and search talent.";
+                    actionUrl = "/recruiter/dashboard";
+                }
+                case REJECTED -> {
+                    type = NotificationType.RECRUITER_REJECTED;
+                    priority = NotificationPriority.HIGH;
+                    title = "Recruiter Verification Update";
+                    String reason = (event.getRejectionReason() != null && !event.getRejectionReason().isBlank())
+                            ? event.getRejectionReason()
+                            : "Information provided did not meet verification criteria.";
+                    body = "Your verification request was not approved. Reason: \"" + reason + "\". You may update your profile and resubmit.";
+                    actionUrl = "/recruiter/verification";
+                }
+                case SUSPENDED -> {
+                    type = NotificationType.RECRUITER_SUSPENDED;
+                    priority = NotificationPriority.CRITICAL;
+                    title = "Recruiter Account Suspended";
+                    String reason = (event.getRejectionReason() != null && !event.getRejectionReason().isBlank())
+                            ? event.getRejectionReason()
+                            : "Account suspended due to policy violations.";
+                    body = "Your recruiter account has been suspended. Reason: \"" + reason + "\". Please contact platform support.";
+                    actionUrl = "/about";
+                }
+                default -> {
+                    return;
+                }
+            }
+
+            notificationService.send(
+                    user,
+                    type,
+                    priority,
+                    title,
+                    body,
+                    actionUrl,
+                    event.getRecruiterId(),
+                    "RECRUITER_VERIFICATION"
+            );
+
+            log.info("Recruiter verification notification [{}] sent to [{}]", type, event.getRecruiterEmail());
+
+        } catch (Exception ex) {
+            log.error("Failed to send verification notification for recruiter [{}]: {}",
+                    event.getRecruiterEmail(), ex.getMessage(), ex);
+        }
+    }
+
+    private String formatStatus(String status) {
+        String lower = status.toLowerCase().replace('_', ' ');
+        return Character.toUpperCase(lower.charAt(0)) + lower.substring(1);
+    }
 }
+

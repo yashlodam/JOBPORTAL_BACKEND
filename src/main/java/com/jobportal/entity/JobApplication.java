@@ -23,6 +23,12 @@ import jakarta.persistence.UniqueConstraint;
             name = "uq_user_job_application",
             columnNames = {"applicant_id", "job_id"}
         )
+    },
+    indexes = {
+        @jakarta.persistence.Index(name = "idx_job_app_job_id", columnList = "job_id"),
+        @jakarta.persistence.Index(name = "idx_job_app_applicant_id", columnList = "applicant_id"),
+        @jakarta.persistence.Index(name = "idx_job_app_status", columnList = "status"),
+        @jakarta.persistence.Index(name = "idx_job_app_created_at", columnList = "created_at")
     }
 )
 public class JobApplication extends Auditable {

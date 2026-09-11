@@ -21,6 +21,9 @@ public interface ResumeRepository extends JpaRepository<Resume, Long> {
     /** Returns a specific resume belonging to a profile. */
     Optional<Resume> findByIdAndProfileId(Long id, Long profileId);
 
+    /** Returns all resumes matching a profile ID and file name (newest first). */
+    List<Resume> findByProfileIdAndFileNameOrderByIdDesc(Long profileId, String fileName);
+
     /** Counts total resumes uploaded for a profile. */
     long countByProfileId(Long profileId);
 

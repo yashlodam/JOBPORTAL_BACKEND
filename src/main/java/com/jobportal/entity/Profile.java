@@ -87,7 +87,6 @@ public class Profile extends Auditable {
 
     // ── Scalar fields ─────────────────────────────────────────────────────────
 
-    @Lob
     @Column(columnDefinition = "TEXT")
     private String about;
     private String profileImage;

@@ -14,6 +14,10 @@ public class JobApplicationResponse {
     private String jobTitle;
     private String companyName;
     private String companyLogo;
+    private String jobLocation;
+    private String workMode;
+    private Long minimumSalary;
+    private Long maximumSalary;
     private Long applicantId;
     private String applicantName;
     private String applicantEmail;
@@ -38,6 +42,18 @@ public class JobApplicationResponse {
 
     public String getCompanyLogo() { return companyLogo; }
     public void setCompanyLogo(String companyLogo) { this.companyLogo = companyLogo; }
+
+    public String getJobLocation() { return jobLocation; }
+    public void setJobLocation(String jobLocation) { this.jobLocation = jobLocation; }
+
+    public String getWorkMode() { return workMode; }
+    public void setWorkMode(String workMode) { this.workMode = workMode; }
+
+    public Long getMinimumSalary() { return minimumSalary; }
+    public void setMinimumSalary(Long minimumSalary) { this.minimumSalary = minimumSalary; }
+
+    public Long getMaximumSalary() { return maximumSalary; }
+    public void setMaximumSalary(Long maximumSalary) { this.maximumSalary = maximumSalary; }
 
     public Long getApplicantId() { return applicantId; }
     public void setApplicantId(Long applicantId) { this.applicantId = applicantId; }

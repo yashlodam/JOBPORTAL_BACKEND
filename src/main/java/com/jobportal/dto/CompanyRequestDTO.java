@@ -14,12 +14,12 @@ public class CompanyRequestDTO {
 
     private String logo;
 
+    private String coverImage;
+
     @NotBlank(message = "Industry is required")
     private String industry;
 
     private String companySize;
-    
-    
 
     private String headquarters;
 
@@ -68,6 +68,14 @@ public class CompanyRequestDTO {
         this.logo = logo;
     }
 
+    public String getCoverImage() {
+        return coverImage;
+    }
+
+    public void setCoverImage(String coverImage) {
+        this.coverImage = coverImage;
+    }
+
     public String getIndustry() {
         return industry;
     }
@@ -105,7 +113,7 @@ public class CompanyRequestDTO {
     }
 
     public void setEmail(String email) {
-        this.email = email;
+        this.email = (email != null && email.trim().isEmpty()) ? null : (email != null ? email.trim() : null);
     }
 
     public String getPhone() {

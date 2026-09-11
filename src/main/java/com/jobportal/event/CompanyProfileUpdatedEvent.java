@@ -2,35 +2,32 @@ package com.jobportal.event;
 
 import org.springframework.context.ApplicationEvent;
 
-import com.jobportal.entity.Company;
-import com.jobportal.entity.User;
-
 /**
- * Published by {@link com.jobportal.serviceImpl.CompanyServiceImpl}
- * when a recruiter creates or updates their company profile.
- *
- * <p>The boolean {@code created} flag lets the listener differentiate between
- * a "company created" notification and a "company updated" notification
- * without requiring two separate event classes.</p>
+ * Published when a recruiter creates or updates their company profile.
+ * Scalar-only — no JPA entity references.
  */
 public class CompanyProfileUpdatedEvent extends ApplicationEvent {
 
-    private final User recruiterUser;
-    private final Company company;
+    private final Long    companyId;
+    private final String  companyName;
+    private final Long    recruiterUserId;
+    /** {@code true} = just created; {@code false} = updated. */
     private final boolean created;
 
     public CompanyProfileUpdatedEvent(Object source,
-                                      User recruiterUser,
-                                      Company company,
+                                      Long companyId,
+                                      String companyName,
+                                      Long recruiterUserId,
                                       boolean created) {
         super(source);
-        this.recruiterUser = recruiterUser;
-        this.company       = company;
-        this.created       = created;
+        this.companyId       = companyId;
+        this.companyName     = companyName;
+        this.recruiterUserId = recruiterUserId;
+        this.created         = created;
     }
 
-    public User getRecruiterUser() { return recruiterUser; }
-    public Company getCompany()    { return company; }
-    /** @return {@code true} if the company was just created; {@code false} if updated. */
-    public boolean isCreated()     { return created; }
+    public Long    getCompanyId()        { return companyId; }
+    public String  getCompanyName()      { return companyName; }
+    public Long    getRecruiterUserId()  { return recruiterUserId; }
+    public boolean isCreated()           { return created; }
 }

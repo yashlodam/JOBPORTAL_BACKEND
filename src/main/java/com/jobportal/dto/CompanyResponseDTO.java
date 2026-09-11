@@ -11,6 +11,10 @@ public class CompanyResponseDTO {
     private String website;
 
     private String logo;
+    private String logoUrl;
+
+    private String coverImage;
+    private String coverImageUrl;
 
     private String industry;
 
@@ -176,5 +180,29 @@ public class CompanyResponseDTO {
 
     public void setUpdatedOn(LocalDateTime updatedOn) {
         this.updatedOn = updatedOn;
+    }
+
+    public String getLogoUrl() {
+        return logoUrl;
+    }
+
+    public void setLogoUrl(String logoUrl) {
+        this.logoUrl = logoUrl;
+    }
+
+    public String getCoverImage() {
+        return coverImage;
+    }
+
+    public void setCoverImage(String coverImage) {
+        this.coverImage = coverImage;
+    }
+
+    public String getCoverImageUrl() {
+        return coverImageUrl;
+    }
+
+    public void setCoverImageUrl(String coverImageUrl) {
+        this.coverImageUrl = coverImageUrl;
     }
 }

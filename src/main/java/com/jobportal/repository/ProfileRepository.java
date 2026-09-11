@@ -4,6 +4,7 @@ import java.util.Optional;
 
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -14,7 +15,7 @@ import com.jobportal.entity.Profile;
  *
  * <h3>Loading Strategy</h3>
  * <p>Two distinct query methods serve two distinct purposes:</p>
- *
+
  * <ol>
  *   <li>{@link #findByUserEmail} — lightweight, no joins. Used exclusively
  *       for write (mutation) paths where only scalar fields are needed.</li>
@@ -22,22 +23,9 @@ import com.jobportal.entity.Profile;
  *       {@code ProfileResponse} needs via a single set of efficient queries.
  *       Used in every code path that calls {@code toResponse()}.</li>
  * </ol>
- *
- * <h3>Why NOT a single JOIN FETCH for all collections?</h3>
- * <p>Joining multiple {@code @OneToMany} / {@code @ElementCollection} bags in
- * one JPQL query causes a Cartesian product: N experiences × M educations × …
- * rows returned — correct but massively wasteful. Hibernate 6 solves this with
- * the {@code @BatchSize} strategy: the root entity is fetched first, then each
- * lazy collection is fetched in a single batch query per collection type,
- * costing exactly 1 + 5 = 6 SQL statements regardless of how many profiles
- * are loaded in a page. See {@code application.properties}.</p>
- *
- * <h3>Why @EntityGraph only for user and resume?</h3>
- * <p>{@code user} and {@code resume} are {@code @OneToOne} — one extra column
- * each, safely joined without row multiplication. The {@code @ElementCollection}
- * and {@code @OneToMany} bags are delegated to {@code @BatchSize}.</p>
  */
-public interface ProfileRepository extends JpaRepository<Profile, Long> {
+public interface ProfileRepository
+        extends JpaRepository<Profile, Long>, JpaSpecificationExecutor<Profile> {
 
     /**
      * Lightweight lookup — no joins, scalar fields only.
@@ -48,21 +36,17 @@ public interface ProfileRepository extends JpaRepository<Profile, Long> {
 
     /**
      * Full-detail lookup — loads every association needed by ProfileResponse.
-     *
-     * <ul>
-     *   <li>user  — joined via EntityGraph (@OneToOne — no row multiplication)</li>
-     *   <li>resume — joined via EntityGraph (@OneToOne — no row multiplication)</li>
-     *   <li>skills, languages, experiences, educations, certifications —
-     *       loaded by Hibernate's BatchSize mechanism (see application.properties).
-     *       Each fires one additional SQL, for a constant total of 6 queries.</li>
-     * </ul>
-     *
-     * <p>Always use this method before calling {@code toResponse()}.</p>
      */
     @EntityGraph(attributePaths = {"user"})
     @Query("SELECT p FROM Profile p JOIN p.user u WHERE u.email = :email")
     Optional<Profile> findByUserEmailWithDetails(@Param("email") String email);
 
     /** Lookup by user PK — used in registration flow. */
+    @EntityGraph(attributePaths = {"user"})
     Optional<Profile> findByUserId(Long userId);
+
+    /** Full-detail lookup by profile ID. */
+    @EntityGraph(attributePaths = {"user"})
+    @Query("SELECT p FROM Profile p WHERE p.id = :id")
+    Optional<Profile> findByIdWithDetails(@Param("id") Long id);
 }

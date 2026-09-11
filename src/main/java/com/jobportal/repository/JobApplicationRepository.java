@@ -15,6 +15,15 @@ public interface JobApplicationRepository extends JpaRepository<JobApplication, 
 
     boolean existsByApplicantIdAndJobId(Long applicantId, Long jobId);
 
+    /**
+     * Load a single application with ALL associations needed by the status-update
+     * path and the response mapper: job, job.company, job.recruiter, applicant, resume.
+     * One query — no follow-up lazy loads needed.
+     */
+    @EntityGraph(attributePaths = {"job", "job.company", "job.recruiter", "job.recruiter.user", "applicant", "resume"})
+    @Query("SELECT ja FROM JobApplication ja WHERE ja.id = :id")
+    Optional<JobApplication> findByIdWithDetails(@Param("id") Long id);
+
     @EntityGraph(attributePaths = {"job", "job.company", "applicant", "resume"})
     Page<JobApplication> findByApplicantId(Long applicantId, Pageable pageable);
 
@@ -35,4 +44,11 @@ public interface JobApplicationRepository extends JpaRepository<JobApplication, 
      */
     @Query("SELECT ja.applicant.id FROM JobApplication ja WHERE ja.job.id = :jobId")
     java.util.List<Long> findApplicantUserIdsByJobId(@Param("jobId") Long jobId);
+
+    /**
+     * Disassociates deleted resumes from past job applications so foreign key constraints are not violated.
+     */
+    @org.springframework.data.jpa.repository.Modifying
+    @Query("UPDATE JobApplication ja SET ja.resume = null WHERE ja.resume.id = :resumeId")
+    void nullifyResumeReference(@Param("resumeId") Long resumeId);
 }

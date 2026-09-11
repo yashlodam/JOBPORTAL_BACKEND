@@ -2,38 +2,55 @@ package com.jobportal.event;
 
 import org.springframework.context.ApplicationEvent;
 
-import com.jobportal.entity.Job;
-import com.jobportal.entity.User;
-
 /**
- * Published by {@link com.jobportal.serviceImpl.JobApplicationServiceImpl} when a
- * candidate successfully submits a job application.
+ * Published when a candidate successfully submits a job application.
  *
- * <p>Carries all data needed by the listener to build the notification without any
- * additional DB queries.</p>
+ * <p><strong>Scalar-only design:</strong> All fields are plain Java scalars — no JPA
+ * entity references. This event fires with {@code @TransactionalEventListener(AFTER_COMMIT)},
+ * meaning the original Hibernate session is already closed when listeners run.
+ * Passing entity proxies into a subsequent {@code REQUIRES_NEW} transaction causes
+ * {@code DetachedObjectException}. Scalars are always safe.</p>
  */
 public class ApplicationSubmittedEvent extends ApplicationEvent {
 
-    private final User applicant;
-    /** The recruiter who posted the job — pre-resolved to avoid lazy access in listener. */
-    private final User recruiterUser;
-    private final Job job;
+    /** ID of the application just created. */
     private final Long applicationId;
 
+    /** ID of the applicant user (the person who applied). */
+    private final Long applicantUserId;
+
+    /** Name of the applicant — for the notification body. */
+    private final String applicantName;
+
+    /** ID of the job applied to. */
+    private final Long jobId;
+
+    /** Title of the job — for the notification body. */
+    private final String jobTitle;
+
+    /** ID of the recruiter's User record (notification recipient). */
+    private final Long recruiterUserId;
+
     public ApplicationSubmittedEvent(Object source,
-                                     User applicant,
-                                     User recruiterUser,
-                                     Job job,
-                                     Long applicationId) {
+                                     Long applicationId,
+                                     Long applicantUserId,
+                                     String applicantName,
+                                     Long jobId,
+                                     String jobTitle,
+                                     Long recruiterUserId) {
         super(source);
-        this.applicant      = applicant;
-        this.recruiterUser  = recruiterUser;
-        this.job            = job;
-        this.applicationId  = applicationId;
+        this.applicationId   = applicationId;
+        this.applicantUserId = applicantUserId;
+        this.applicantName   = applicantName;
+        this.jobId           = jobId;
+        this.jobTitle        = jobTitle;
+        this.recruiterUserId = recruiterUserId;
     }
 
-    public User getApplicant()     { return applicant; }
-    public User getRecruiterUser() { return recruiterUser; }
-    public Job getJob()            { return job; }
-    public Long getApplicationId() { return applicationId; }
+    public Long   getApplicationId()   { return applicationId; }
+    public Long   getApplicantUserId() { return applicantUserId; }
+    public String getApplicantName()   { return applicantName; }
+    public Long   getJobId()           { return jobId; }
+    public String getJobTitle()        { return jobTitle; }
+    public Long   getRecruiterUserId() { return recruiterUserId; }
 }

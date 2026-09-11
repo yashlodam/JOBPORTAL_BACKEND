@@ -55,6 +55,7 @@ public class CompanyServiceImpl implements CompanyService {
     private final JobMapper                jobMapper;
     private final String                   uploadBaseDir;
     private final ApplicationEventPublisher eventPublisher;
+    private final com.jobportal.service.RecruiterAuthorizationService recruiterAuthorizationService;
 
     public CompanyServiceImpl(
             UserRepository userRepository,
@@ -63,7 +64,8 @@ public class CompanyServiceImpl implements CompanyService {
             JobRepository jobRepository,
             JobMapper jobMapper,
             @Value("${file.upload.base-dir}") String uploadBaseDir,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            com.jobportal.service.RecruiterAuthorizationService recruiterAuthorizationService) {
         this.userRepository  = userRepository;
         this.recruiterRepository = recruiterRepository;
         this.companyRepository   = companyRepository;
@@ -71,35 +73,40 @@ public class CompanyServiceImpl implements CompanyService {
         this.jobMapper           = jobMapper;
         this.uploadBaseDir       = uploadBaseDir;
         this.eventPublisher      = eventPublisher;
+        this.recruiterAuthorizationService = recruiterAuthorizationService;
     }
 
     @Override
     @Transactional
     public CompanyResponseDTO createCompany(CompanyRequestDTO dto, String email)
             throws JobPortalException {
-        User user = findUserByEmail(email);
+        // ── Status check: only active/pending/rejected recruiters can setup company (suspended blocked) ──
+        Recruiter recruiter = recruiterAuthorizationService.requireApprovedOrPendingRecruiter(email);
+        User user = recruiter.getUser();
 
-        if (user.getAccountType() != AccountType.EMPLOYER) {
-            throw JobPortalException.forbidden("Only employers can create a company.");
+        if (user.getAccountType() != AccountType.EMPLOYER && user.getAccountType() != AccountType.ADMIN) {
+            throw JobPortalException.forbidden("Only employers and admins can manage a company.");
         }
 
-        Recruiter recruiter = findRecruiterByUser(user);
-
-        if (recruiter.getCompany() != null) {
-            throw JobPortalException.conflict("You already belong to a company.");
+        // Idempotent upsert: If recruiter already has a company, update it instead of throwing 409 Conflict
+        Company company = recruiter.getCompany();
+        boolean isNew = false;
+        if (company == null) {
+            company = new Company();
+            isNew = true;
         }
 
-        Company company = new Company();
         mapDtoToCompany(dto, company);
-
         Company savedCompany = companyRepository.save(company);
 
-        recruiter.setCompany(savedCompany);
-        recruiterRepository.save(recruiter);
+        if (isNew || recruiter.getCompany() == null) {
+            recruiter.setCompany(savedCompany);
+            recruiterRepository.save(recruiter);
+        }
 
-        // ── Publish event: notify recruiter their company profile is live ─────
+        // ── Publish event: notify recruiter their company profile is live / updated ─────
         eventPublisher.publishEvent(new CompanyProfileUpdatedEvent(
-                this, user, savedCompany, true));
+                this, savedCompany.getId(), savedCompany.getCompanyName(), user.getId(), isNew));
 
         return toCompanyResponse(savedCompany);
     }
@@ -107,9 +114,9 @@ public class CompanyServiceImpl implements CompanyService {
     @Override
     @Transactional(readOnly = true)
     public CompanyResponseDTO getMyCompany(String email) throws JobPortalException {
-        Recruiter recruiter = findRecruiterByUser(findUserByEmail(email));
+        Recruiter recruiter = recruiterAuthorizationService.requireApprovedOrPendingRecruiter(email);
         if (recruiter.getCompany() == null) {
-            throw JobPortalException.notFound("No company found for your account.");
+            return null;
         }
         return toCompanyResponse(recruiter.getCompany());
     }
@@ -118,16 +125,32 @@ public class CompanyServiceImpl implements CompanyService {
     @Transactional
     public CompanyResponseDTO updateCompany(CompanyRequestDTO dto, String email)
             throws JobPortalException {
-        User user = findUserByEmail(email);
-        Recruiter recruiter = findRecruiterByUser(user);
-        Company company = getRecruiterCompany(recruiter);
+        Recruiter recruiter = recruiterAuthorizationService.requireApprovedOrPendingRecruiter(email);
+        User user = recruiter.getUser();
+
+        if (user.getAccountType() != AccountType.EMPLOYER && user.getAccountType() != AccountType.ADMIN) {
+            throw JobPortalException.forbidden("Only employers and admins can manage a company.");
+        }
+
+        // Idempotent upsert: If recruiter doesn't have a company yet, create one instead of throwing 404
+        Company company = recruiter.getCompany();
+        boolean isNew = false;
+        if (company == null) {
+            company = new Company();
+            isNew = true;
+        }
 
         mapDtoToCompany(dto, company);
         Company updated = companyRepository.save(company);
 
+        if (isNew || recruiter.getCompany() == null) {
+            recruiter.setCompany(updated);
+            recruiterRepository.save(recruiter);
+        }
+
         // ── Publish event: notify recruiter about the company update ──────────
         eventPublisher.publishEvent(new CompanyProfileUpdatedEvent(
-                this, user, updated, false));
+                this, updated.getId(), updated.getCompanyName(), user.getId(), isNew));
 
         return toCompanyResponse(updated);
     }
@@ -135,8 +158,7 @@ public class CompanyServiceImpl implements CompanyService {
     @Override
     @Transactional
     public void deleteCompany(String email) throws JobPortalException {
-        User user = findUserByEmail(email);
-        Recruiter recruiter = findRecruiterByUser(user);
+        Recruiter recruiter = recruiterAuthorizationService.requireApprovedOrPendingRecruiter(email);
         Company company = getRecruiterCompany(recruiter);
 
         recruiter.setCompany(null);
@@ -171,8 +193,15 @@ public class CompanyServiceImpl implements CompanyService {
     @Override
     @Transactional
     public CompanyResponseDTO uploadLogo(MultipartFile file, String email) throws Exception {
-        Recruiter recruiter = findRecruiterByUser(findUserByEmail(email));
-        Company company = getRecruiterCompany(recruiter);
+        Recruiter recruiter = recruiterAuthorizationService.requireApprovedOrPendingRecruiter(email);
+        Company company = recruiter.getCompany();
+        if (company == null) {
+            company = new Company();
+            company.setCompanyName("Company");
+            company = companyRepository.save(company);
+            recruiter.setCompany(company);
+            recruiterRepository.save(recruiter);
+        }
 
         String fileName = saveFile(file, "logo");
         company.setLogo(fileName);
@@ -183,8 +212,15 @@ public class CompanyServiceImpl implements CompanyService {
     @Override
     @Transactional
     public CompanyResponseDTO uploadCoverImage(MultipartFile file, String email) throws Exception {
-        Recruiter recruiter = findRecruiterByUser(findUserByEmail(email));
-        Company company = getRecruiterCompany(recruiter);
+        Recruiter recruiter = recruiterAuthorizationService.requireApprovedOrPendingRecruiter(email);
+        Company company = recruiter.getCompany();
+        if (company == null) {
+            company = new Company();
+            company.setCompanyName("Company");
+            company = companyRepository.save(company);
+            recruiter.setCompany(company);
+            recruiterRepository.save(recruiter);
+        }
 
         String fileName = saveFile(file, "cover");
         company.setCoverImage(fileName);
@@ -196,7 +232,7 @@ public class CompanyServiceImpl implements CompanyService {
     @Transactional(readOnly = true)
     public Page<JobSummaryResponse> getMyCompanyJobs(String email, Pageable pageable)
             throws JobPortalException {
-        Recruiter recruiter = findRecruiterByUser(findUserByEmail(email));
+        Recruiter recruiter = recruiterAuthorizationService.requireApprovedOrPendingRecruiter(email);
         Company company = getRecruiterCompany(recruiter);
         return jobRepository.findByCompanyIdAndStatus(company.getId(), JobStatus.OPEN, pageable)
                 .map(jobMapper::toSummary);
@@ -233,17 +269,23 @@ public class CompanyServiceImpl implements CompanyService {
     }
 
     private void mapDtoToCompany(CompanyRequestDTO dto, Company company) {
-        if (dto.getCompanyName() != null) company.setCompanyName(dto.getCompanyName());
-        if (dto.getWebsite() != null)     company.setWebsite(dto.getWebsite());
-        if (dto.getIndustry() != null)    company.setIndustry(dto.getIndustry());
-        if (dto.getCompanySize() != null) company.setCompanySize(dto.getCompanySize());
-        if (dto.getHeadquarters() != null) company.setHeadquarters(dto.getHeadquarters());
-        if (dto.getFoundedYear() != null) company.setFoundedYear(dto.getFoundedYear());
-        if (dto.getEmail() != null)       company.setEmail(dto.getEmail());
-        if (dto.getPhone() != null)       company.setPhone(dto.getPhone());
-        if (dto.getDescription() != null) company.setDescription(dto.getDescription());
-        if (dto.getMission() != null)     company.setMission(dto.getMission());
-        if (dto.getBenefits() != null)    company.setBenefits(dto.getBenefits());
+        if (dto.getCompanyName() != null && !dto.getCompanyName().trim().isEmpty()) {
+            company.setCompanyName(dto.getCompanyName().trim());
+        }
+        if (dto.getWebsite() != null)     company.setWebsite(dto.getWebsite().trim());
+        if (dto.getLogo() != null)        company.setLogo(dto.getLogo().trim());
+        if (dto.getCoverImage() != null)  company.setCoverImage(dto.getCoverImage().trim());
+        if (dto.getIndustry() != null && !dto.getIndustry().trim().isEmpty()) {
+            company.setIndustry(dto.getIndustry().trim());
+        }
+        if (dto.getCompanySize() != null) company.setCompanySize(dto.getCompanySize().trim());
+        if (dto.getHeadquarters() != null) company.setHeadquarters(dto.getHeadquarters().trim());
+        if (dto.getFoundedYear() != null) company.setFoundedYear(dto.getFoundedYear().trim());
+        if (dto.getEmail() != null)       company.setEmail(dto.getEmail().trim());
+        if (dto.getPhone() != null)       company.setPhone(dto.getPhone().trim());
+        if (dto.getDescription() != null) company.setDescription(dto.getDescription().trim());
+        if (dto.getMission() != null)     company.setMission(dto.getMission().trim());
+        if (dto.getBenefits() != null)    company.setBenefits(dto.getBenefits().trim());
     }
 
     private String saveFile(MultipartFile file, String subDir) throws Exception {
@@ -259,11 +301,19 @@ public class CompanyServiceImpl implements CompanyService {
     }
 
     private CompanyResponseDTO toCompanyResponse(Company c) {
+        if (c == null) return null;
         CompanyResponseDTO dto = new CompanyResponseDTO();
         dto.setId(c.getId());
         dto.setCompanyName(c.getCompanyName());
         dto.setWebsite(c.getWebsite());
         dto.setLogo(c.getLogo());
+        if (c.getLogo() != null && !c.getLogo().isBlank()) {
+            dto.setLogoUrl(c.getLogo().startsWith("http") ? c.getLogo() : "/uploads/" + c.getLogo());
+        }
+        dto.setCoverImage(c.getCoverImage());
+        if (c.getCoverImage() != null && !c.getCoverImage().isBlank()) {
+            dto.setCoverImageUrl(c.getCoverImage().startsWith("http") ? c.getCoverImage() : "/uploads/" + c.getCoverImage());
+        }
         dto.setIndustry(c.getIndustry());
         dto.setCompanySize(c.getCompanySize());
         dto.setHeadquarters(c.getHeadquarters());
@@ -273,8 +323,8 @@ public class CompanyServiceImpl implements CompanyService {
         dto.setDescription(c.getDescription());
         dto.setMission(c.getMission());
         dto.setBenefits(c.getBenefits());
-        dto.setTotalJobs(jobRepository.countByCompanyIdAndStatus(c.getId(), JobStatus.OPEN));
-        dto.setTotalRecruiters(recruiterRepository.countByCompanyId(c.getId()));
+        dto.setTotalJobs(c.getId() != null ? jobRepository.countByCompanyIdAndStatus(c.getId(), JobStatus.OPEN) : 0L);
+        dto.setTotalRecruiters(c.getId() != null ? recruiterRepository.countByCompanyId(c.getId()) : 0L);
         dto.setCreatedOn(c.getCreatedAt());
         dto.setUpdatedOn(c.getUpdatedAt());
         return dto;

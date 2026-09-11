@@ -5,6 +5,7 @@ import com.jobportal.domain.ExperienceLevel;
 
 public class ProfileHeaderRequest {
 
+    private String name;
     private String headline;
     private String currentCompany;
     private String location;
@@ -13,8 +14,12 @@ public class ProfileHeaderRequest {
 
     public ProfileHeaderRequest() {}
 
+    public String getName() { return name; }
+    public void setName(String name) { this.name = name; }
+
     public String getHeadline() { return headline; }
     public void setHeadline(String headline) { this.headline = headline; }
+
 
     public String getCurrentCompany() { return currentCompany; }
     public void setCurrentCompany(String currentCompany) { this.currentCompany = currentCompany; }

@@ -31,3 +31,12 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Local Configuration & Secrets ###
+.env
+.env.local
+*.local
+src/main/resources/application-local.properties
+
+### Uploads ###
+uploads/

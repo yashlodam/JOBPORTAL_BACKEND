@@ -1,28 +1,37 @@
 package com.jobportal.serviceImpl;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.jobportal.chat.repository.ConversationRepository;
 import com.jobportal.domain.JobStatus;
 import com.jobportal.dto.request.JobFilterRequest;
 import com.jobportal.dto.request.JobRequest;
 import com.jobportal.dto.response.CategoryResponse;
 import com.jobportal.dto.response.JobDetailResponse;
 import com.jobportal.dto.response.JobSummaryResponse;
+import com.jobportal.dto.response.SearchFacetsResponse;
+import com.jobportal.dto.response.SearchSuggestionsResponse;
 import com.jobportal.dto.response.WorkModeResponse;
 import com.jobportal.entity.Job;
 import com.jobportal.entity.Recruiter;
 import com.jobportal.entity.User;
 import com.jobportal.event.JobDeletedEvent;
 import com.jobportal.event.JobPostedEvent;
+import com.jobportal.service.JobSearchEngineService;
+
 import com.jobportal.exception.JobPortalException;
+import com.jobportal.jobmatch.repository.JobMatchAnalysisRepository;
 import com.jobportal.mapper.JobMapper;
 import com.jobportal.repository.CompanyRepository;
 import com.jobportal.repository.JobApplicationRepository;
@@ -31,6 +40,7 @@ import com.jobportal.repository.RecruiterRepository;
 import com.jobportal.repository.UserRepository;
 import com.jobportal.repository.specification.JobSpecification;
 import com.jobportal.service.JobService;
+import com.jobportal.service.RecruiterAuthorizationService;
 
 /**
  * Job service implementation.
@@ -79,13 +89,17 @@ import com.jobportal.service.JobService;
 @Service
 public class JobServiceImpl implements JobService {
 
-    private final JobRepository           jobRepository;
-    private final UserRepository          userRepository;
-    private final RecruiterRepository     recruiterRepository;
-    private final CompanyRepository       companyRepository;
-    private final JobApplicationRepository jobApplicationRepository;
-    private final JobMapper               jobMapper;
-    private final ApplicationEventPublisher eventPublisher;
+    private final JobRepository                  jobRepository;
+    private final UserRepository                 userRepository;
+    private final RecruiterRepository            recruiterRepository;
+    private final CompanyRepository              companyRepository;
+    private final JobApplicationRepository       jobApplicationRepository;
+    private final JobMapper                      jobMapper;
+    private final ApplicationEventPublisher      eventPublisher;
+    private final RecruiterAuthorizationService  recruiterAuthorizationService;
+    private final ConversationRepository         conversationRepository;
+    private final JobMatchAnalysisRepository     jobMatchAnalysisRepository;
+    private final JobSearchEngineService         jobSearchEngineService;
 
     public JobServiceImpl(
             JobRepository jobRepository,
@@ -94,14 +108,22 @@ public class JobServiceImpl implements JobService {
             CompanyRepository companyRepository,
             JobApplicationRepository jobApplicationRepository,
             JobMapper jobMapper,
-            ApplicationEventPublisher eventPublisher) {
-        this.jobRepository            = jobRepository;
-        this.userRepository           = userRepository;
-        this.recruiterRepository      = recruiterRepository;
-        this.companyRepository        = companyRepository;
-        this.jobApplicationRepository = jobApplicationRepository;
-        this.jobMapper                = jobMapper;
-        this.eventPublisher           = eventPublisher;
+            ApplicationEventPublisher eventPublisher,
+            RecruiterAuthorizationService recruiterAuthorizationService,
+            ConversationRepository conversationRepository,
+            JobMatchAnalysisRepository jobMatchAnalysisRepository,
+            JobSearchEngineService jobSearchEngineService) {
+        this.jobRepository                 = jobRepository;
+        this.userRepository                = userRepository;
+        this.recruiterRepository           = recruiterRepository;
+        this.companyRepository             = companyRepository;
+        this.jobApplicationRepository      = jobApplicationRepository;
+        this.jobMapper                     = jobMapper;
+        this.eventPublisher                = eventPublisher;
+        this.recruiterAuthorizationService = recruiterAuthorizationService;
+        this.conversationRepository        = conversationRepository;
+        this.jobMatchAnalysisRepository    = jobMatchAnalysisRepository;
+        this.jobSearchEngineService        = jobSearchEngineService;
     }
 
     // ── Create ───────────────────────────────────────────────────────────────
@@ -109,8 +131,11 @@ public class JobServiceImpl implements JobService {
     @Override
     @Transactional
     public JobDetailResponse createJob(JobRequest dto, String email) throws JobPortalException {
-        User user = findUserByEmail(email);
-        Recruiter recruiter = findRecruiterByUser(user);
+        // ── SECURITY GATE: only APPROVED recruiters can post jobs ─────────────
+        // requireApprovedRecruiter() throws 403 for PENDING, REJECTED, SUSPENDED
+        // with a status-specific actionable message.
+        Recruiter recruiter = recruiterAuthorizationService.requireApprovedRecruiter(email);
+        User user = recruiter.getUser();
 
         if (recruiter.getCompany() == null) {
             throw JobPortalException.badRequest(
@@ -125,8 +150,14 @@ public class JobServiceImpl implements JobService {
 
         Job saved = jobRepository.save(job);
 
-        // ── Publish event: listener logs / fans-out job-match notifications ──
-        eventPublisher.publishEvent(new JobPostedEvent(this, user, saved));
+        // ── Publish event (scalars only ─ session is still open here) ────────
+        eventPublisher.publishEvent(new JobPostedEvent(
+                this,
+                saved.getId(),
+                saved.getJobTitle(),
+                user.getId(),
+                Boolean.TRUE.equals(saved.getFeatured())
+        ));
 
         // Re-fetch with full details so the mapper can access company + recruiter.user
         return jobMapper.toDetail(findJobByIdWithDetails(saved.getId()));
@@ -138,8 +169,9 @@ public class JobServiceImpl implements JobService {
     @Transactional
     public JobDetailResponse updateJob(Long jobId, JobRequest dto, String email)
             throws JobPortalException {
-        User user = findUserByEmail(email);
-        Recruiter recruiter = findRecruiterByUser(user);
+        // ── SECURITY GATE: only APPROVED recruiters can update jobs ───────────
+        Recruiter recruiter = recruiterAuthorizationService.requireApprovedRecruiter(email);
+        User user = recruiter.getUser();
 
         // Use findByIdWithDetails: loads company + recruiter + recruiter.user
         // AND initializes skillsRequired/preferredSkills within this session
@@ -160,8 +192,8 @@ public class JobServiceImpl implements JobService {
     @Override
     @Transactional
     public void deleteJob(Long jobId, String email) throws JobPortalException {
-        User user = findUserByEmail(email);
-        Recruiter recruiter = findRecruiterByUser(user);
+        // ── SECURITY GATE: only APPROVED recruiters can delete jobs ───────────
+        Recruiter recruiter = recruiterAuthorizationService.requireApprovedRecruiter(email);
 
         Job job = jobRepository.findByIdWithDetails(jobId)
                 .orElseThrow(() -> JobPortalException.notFound("Job not found with id: " + jobId));
@@ -177,7 +209,19 @@ public class JobServiceImpl implements JobService {
         String jobTitle        = job.getJobTitle();
         int    totalApplicants = applicantUserIds.size();
 
-        jobRepository.deleteById(jobId);
+        // ── Clean up FK-constrained child records BEFORE the cascade delete ──
+        // 1. Null-out conversation.jobApplication references so conversations
+        //    linked to any of this job's applications won't block deletion.
+        conversationRepository.detachAllJobApplicationsForJob(jobId);
+
+        // 2. Delete all job-match analyses for this job's applications so the
+        //    cascade delete on JobApplication succeeds without FK conflicts.
+        jobMatchAnalysisRepository.deleteAllByJobId(jobId);
+
+        // ── Delete the entity (not by id) so JPA cascades to applications ────
+        // CascadeType.ALL on Job.applications and Job.savedJobs means Hibernate
+        // will DELETE those rows before removing the job row itself.
+        jobRepository.delete(job);
 
         // ── Publish event: listener notifies all applicants (JOB_EXPIRED) ────
         if (totalApplicants > 0) {
@@ -287,15 +331,83 @@ public class JobServiceImpl implements JobService {
     public Page<JobSummaryResponse> searchJobs(String keyword, Pageable pageable) {
         JobFilterRequest filter = new JobFilterRequest();
         filter.setKeyword(keyword);
-        Specification<Job> spec = JobSpecification.buildFrom(filter);
-        return jobRepository.findAll(spec, pageable).map(jobMapper::toSummary);
+        return filterJobs(filter, pageable);
     }
 
     @Override
     @Transactional(readOnly = true)
     public Page<JobSummaryResponse> filterJobs(JobFilterRequest request, Pageable pageable) {
+        if (request == null) {
+            request = new JobFilterRequest();
+        }
+
+        // 1. Intent Extraction & Preprocessing
+        if (request.getKeyword() != null && !request.getKeyword().trim().isEmpty()) {
+            JobSearchEngineService.SearchIntent intent = jobSearchEngineService.parseQuery(request.getKeyword());
+            if (intent.getExtractedCity() != null && (request.getCities() == null || request.getCities().isEmpty())) {
+                request.setCity(intent.getExtractedCity());
+            }
+            if (intent.getExtractedMode() != null && (request.getWorkingModes() == null || request.getWorkingModes().isEmpty())) {
+                request.setWorkingMode(intent.getExtractedMode());
+            }
+            if (intent.getExtractedJobType() != null && (request.getJobTypes() == null || request.getJobTypes().isEmpty())) {
+                request.setJobType(intent.getExtractedJobType());
+            }
+            if (intent.getExtractedExperience() != null && (request.getExperienceLevels() == null || request.getExperienceLevels().isEmpty())) {
+                request.setExperienceLevel(intent.getExtractedExperience());
+            }
+            if (intent.getCleanedKeyword() != null && !intent.getCleanedKeyword().isEmpty()) {
+                request.setKeyword(intent.getCleanedKeyword());
+            }
+        }
+
         Specification<Job> specification = JobSpecification.buildFrom(request);
+
+        // 2. Relevance Ranking when requested or keyword present with default sort
+        boolean isRelevanceSort = "relevance".equalsIgnoreCase(request.getSortBy())
+                || (request.getKeyword() != null && !request.getKeyword().trim().isEmpty() && isDefaultSort(pageable));
+
+        if (isRelevanceSort) {
+            final String finalKeyword = request.getKeyword();
+            JobSearchEngineService.SearchIntent intent = jobSearchEngineService.parseQuery(finalKeyword);
+            List<Job> allMatches = new ArrayList<>(jobRepository.findAll(specification));
+            allMatches.sort((a, b) -> {
+                double scoreB = jobSearchEngineService.calculateRelevanceScore(b, finalKeyword, intent.getTokens(), intent.getSynonyms());
+                double scoreA = jobSearchEngineService.calculateRelevanceScore(a, finalKeyword, intent.getTokens(), intent.getSynonyms());
+                int cmp = Double.compare(scoreB, scoreA);
+                if (cmp != 0) return cmp;
+                if (b.getCreatedAt() != null && a.getCreatedAt() != null) {
+                    return b.getCreatedAt().compareTo(a.getCreatedAt());
+                }
+                return 0;
+            });
+
+            int start = (int) pageable.getOffset();
+            int end = Math.min((start + pageable.getPageSize()), allMatches.size());
+            List<JobSummaryResponse> pagedList = start < allMatches.size()
+                    ? allMatches.subList(start, end).stream().map(jobMapper::toSummary).toList()
+                    : Collections.emptyList();
+            return new PageImpl<>(pagedList, pageable, allMatches.size());
+        }
+
         return jobRepository.findAll(specification, pageable).map(jobMapper::toSummary);
+    }
+
+    private boolean isDefaultSort(Pageable pageable) {
+        if (pageable == null || pageable.getSort().isUnsorted()) return true;
+        return pageable.getSort().stream().allMatch(order -> "createdAt".equalsIgnoreCase(order.getProperty()));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public SearchSuggestionsResponse getSearchSuggestions(String query) {
+        return jobSearchEngineService.getSuggestions(query);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public SearchFacetsResponse getSearchFacets(JobFilterRequest request) {
+        return jobSearchEngineService.getFacets(request);
     }
 
     @Override
@@ -309,6 +421,7 @@ public class JobServiceImpl implements JobService {
     public List<WorkModeResponse> getWorkModes() {
         return jobRepository.getWorkModeCount();
     }
+
 
     // ── Private Helpers ───────────────────────────────────────────────────────
 

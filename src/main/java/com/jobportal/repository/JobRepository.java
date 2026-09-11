@@ -221,6 +221,94 @@ public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificatio
     @Query("UPDATE Job j SET j.totalViews = j.totalViews + 1 WHERE j.id = :jobId")
     void incrementViewCount(@Param("jobId") Long jobId);
     
-    
     long countByCompanyIdAndStatus(Long companyId, JobStatus status);
+
+    long countByStatus(JobStatus status);
+
+    // ── Recommendation Engine ─────────────────────────────────────────────────
+
+    /**
+     * Fetches all OPEN jobs that a given applicant has NOT yet applied to.
+     * Used as the candidate pool for the deterministic recommendation engine.
+     *
+     * <p>EntityGraph loads company + recruiter for DTO mapping.
+     * The NOT IN clause leverages the index on job_applications(applicant_id).
+     * For applicants with no prior applications, the subquery returns an empty list
+     * and ALL open jobs are returned as candidates.
+     */
+    @EntityGraph(attributePaths = {"company", "recruiter", "recruiter.user"})
+    @Query("""
+        SELECT j FROM Job j
+        WHERE j.status = com.jobportal.domain.JobStatus.OPEN
+          AND NOT EXISTS (
+              SELECT 1 FROM JobApplication ja
+              WHERE ja.applicant.id = :applicantId AND ja.job.id = j.id
+          )
+        ORDER BY j.createdAt DESC
+        """)
+    List<Job> findOpenJobsNotAppliedByApplicant(@Param("applicantId") Long applicantId);
+
+    // ── Admin / Suspension Operations ─────────────────────────────────────────
+
+    /**
+     * Closes all OPEN jobs belonging to a recruiter in a single UPDATE.
+     * Called when a recruiter is suspended so their job listings become invisible
+     * to applicants immediately without loading and saving each job entity.
+     *
+     * @param  recruiterId  the recruiter whose open jobs should be closed
+     * @return              number of rows affected
+     */
+    @Modifying
+    @Query("""
+           UPDATE Job j
+           SET j.status = com.jobportal.domain.JobStatus.CLOSED
+           WHERE j.recruiter.id = :recruiterId
+             AND j.status = com.jobportal.domain.JobStatus.OPEN
+           """)
+    int closeAllOpenJobsByRecruiterId(@Param("recruiterId") Long recruiterId);
+
+    /**
+     * Atomically increments totalApplicants counter for a job.
+     */
+    @Modifying
+    @Query("UPDATE Job j SET j.totalApplicants = COALESCE(j.totalApplicants, 0) + 1 WHERE j.id = :jobId")
+    void incrementApplicantCount(@Param("jobId") Long jobId);
+
+    /**
+     * Atomically decrements totalApplicants counter for a job (floored at 0).
+     */
+    @Modifying
+    @Query("UPDATE Job j SET j.totalApplicants = CASE WHEN COALESCE(j.totalApplicants, 0) > 0 THEN j.totalApplicants - 1 ELSE 0 END WHERE j.id = :jobId")
+    void decrementApplicantCount(@Param("jobId") Long jobId);
+
+    /**
+     * Counts the recruiter's jobs for admin dashboard statistics.
+     */
+    long countByRecruiterId(Long recruiterId);
+
+    // ── Search Engine Autocomplete & Suggestions ─────────────────────────────
+
+    @Query("SELECT DISTINCT j.jobTitle FROM Job j WHERE j.status = com.jobportal.domain.JobStatus.OPEN AND LOWER(j.jobTitle) LIKE LOWER(CONCAT('%', :query, '%')) ORDER BY j.jobTitle ASC")
+    List<String> findDistinctJobTitlesByPrefix(@Param("query") String query, Pageable pageable);
+
+    @Query("SELECT DISTINCT c.companyName FROM Job j JOIN j.company c WHERE j.status = com.jobportal.domain.JobStatus.OPEN AND LOWER(c.companyName) LIKE LOWER(CONCAT('%', :query, '%')) ORDER BY c.companyName ASC")
+    List<String> findDistinctCompaniesByPrefix(@Param("query") String query, Pageable pageable);
+
+    @Query("SELECT DISTINCT j.city FROM Job j WHERE j.status = com.jobportal.domain.JobStatus.OPEN AND j.city IS NOT NULL AND LOWER(j.city) LIKE LOWER(CONCAT('%', :query, '%')) ORDER BY j.city ASC")
+    List<String> findDistinctCitiesByPrefix(@Param("query") String query, Pageable pageable);
+
+    @Query("SELECT DISTINCT s FROM Job j JOIN j.skillsRequired s WHERE j.status = com.jobportal.domain.JobStatus.OPEN AND LOWER(s) LIKE LOWER(CONCAT('%', :query, '%')) ORDER BY s ASC")
+    List<String> findDistinctSkillsByPrefix(@Param("query") String query, Pageable pageable);
+
+    // ── Search Facets & Aggregations ──────────────────────────────────────────
+
+    @Query("SELECT j.jobType, COUNT(j) FROM Job j WHERE j.status = com.jobportal.domain.JobStatus.OPEN GROUP BY j.jobType")
+    List<Object[]> getJobTypeCount();
+
+    @Query("SELECT j.experienceLevel, COUNT(j) FROM Job j WHERE j.status = com.jobportal.domain.JobStatus.OPEN GROUP BY j.experienceLevel")
+    List<Object[]> getExperienceLevelCount();
+
+    @Query("SELECT j.city, COUNT(j) FROM Job j WHERE j.status = com.jobportal.domain.JobStatus.OPEN AND j.city IS NOT NULL GROUP BY j.city ORDER BY COUNT(j) DESC")
+    List<Object[]> getCityCount(Pageable pageable);
 }
+

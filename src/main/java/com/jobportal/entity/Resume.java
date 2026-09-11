@@ -15,7 +15,14 @@ import jakarta.persistence.Table;
  * A single profile can have multiple resumes, with one marked as default.
  */
 @Entity
-@Table(name = "resumes")
+@Table(
+    name = "resumes",
+    indexes = {
+        @jakarta.persistence.Index(name = "idx_resumes_profile_id", columnList = "profile_id"),
+        @jakarta.persistence.Index(name = "idx_resumes_is_default", columnList = "is_default"),
+        @jakarta.persistence.Index(name = "idx_resumes_created_at", columnList = "created_at")
+    }
+)
 public class Resume extends Auditable {
 
     @Id

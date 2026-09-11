@@ -1,18 +1,16 @@
 package com.jobportal.controller;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.web.PageableDefault;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -22,20 +20,22 @@ import com.jobportal.domain.ExperienceLevel;
 import com.jobportal.domain.JobType;
 import com.jobportal.domain.WorkingMode;
 import com.jobportal.dto.request.JobFilterRequest;
-import com.jobportal.dto.request.JobRequest;
 import com.jobportal.dto.response.ApiResponse;
 import com.jobportal.dto.response.CategoryResponse;
 import com.jobportal.dto.response.JobDetailResponse;
 import com.jobportal.dto.response.JobSummaryResponse;
+import com.jobportal.dto.response.SearchFacetsResponse;
+import com.jobportal.dto.response.SearchSuggestionsResponse;
 import com.jobportal.dto.response.WorkModeResponse;
+
 import com.jobportal.exception.JobPortalException;
 import com.jobportal.service.JobService;
-import org.springframework.data.domain.Sort;
-
-import jakarta.validation.Valid;
 
 /**
- * Job REST controller.
+ * Public Job REST controller — read-only endpoints for browsing jobs.
+ *
+ * <p>All write operations (create, update, delete) and recruiter-scoped reads
+ * have been moved to {@link RecruiterController} at {@code /api/recruiter/jobs}.</p>
  *
  * <h3>Design decisions</h3>
  *
@@ -48,12 +48,7 @@ import jakarta.validation.Valid;
  *
  * <h4>Wildcard return types removed</h4>
  * <p>{@code ApiResponse<?>} breaks API documentation tools (OpenAPI/Swagger)
- * and client code generators. All endpoints now have fully typed returns.</p>
- *
- * <h4>createJob / updateJob return JobDetailResponse</h4>
- * <p>Returning the full detail after a write avoids a redundant follow-up GET
- * from the client. The cost is one extra re-fetch query in the service, which
- * is acceptable for write operations.</p>
+ * and client code generators. All endpoints have fully typed returns.</p>
  */
 @RestController
 @RequestMapping("/api/jobs")
@@ -63,45 +58,6 @@ public class JobController {
 
     public JobController(JobService jobService) {
         this.jobService = jobService;
-    }
-
-    // ── Write Endpoints (Authenticated Recruiter) ─────────────────────────────
-
-    @PostMapping
-    public ResponseEntity<ApiResponse<JobDetailResponse>> createJob(
-            @Valid @RequestBody JobRequest dto,
-            Authentication authentication) throws JobPortalException {
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(ApiResponse.success("Job posted successfully",
-                        jobService.createJob(dto, authentication.getName())));
-    }
-
-    @PutMapping("/{jobId}")
-    public ResponseEntity<ApiResponse<JobDetailResponse>> updateJob(
-            @PathVariable Long jobId,
-            @Valid @RequestBody JobRequest dto,
-            Authentication authentication) throws JobPortalException {
-        return ResponseEntity.ok(ApiResponse.success("Job updated successfully",
-                jobService.updateJob(jobId, dto, authentication.getName())));
-    }
-
-    @DeleteMapping("/{jobId}")
-    public ResponseEntity<ApiResponse<Void>> deleteJob(
-            @PathVariable Long jobId,
-            Authentication authentication) throws JobPortalException {
-        jobService.deleteJob(jobId, authentication.getName());
-        return ResponseEntity.ok(ApiResponse.message("Job deleted successfully"));
-    }
-
-    // ── Recruiter: My Jobs ────────────────────────────────────────────────────
-
-    @GetMapping("/me")
-    public ResponseEntity<ApiResponse<Page<JobSummaryResponse>>> getMyJobs(
-            Authentication authentication,
-            @PageableDefault(size = 10, sort = "createdAt") Pageable pageable)
-            throws JobPortalException {
-        return ResponseEntity.ok(ApiResponse.success(
-                jobService.getMyJobs(authentication.getName(), pageable)));
     }
 
     // ── Public Read Endpoints ─────────────────────────────────────────────────
@@ -128,55 +84,61 @@ public class JobController {
         return ResponseEntity.ok(ApiResponse.success(jobService.incrementViewAndGet(jobId)));
     }
 
+    /**
+     * Autocomplete suggestions for search input typeahead.
+     * Returns matching job titles, skills, companies, and locations.
+     */
+    @GetMapping("/suggestions")
+    public ResponseEntity<ApiResponse<SearchSuggestionsResponse>> getSearchSuggestions(
+            @RequestParam String query) {
+        return ResponseEntity.ok(ApiResponse.success(jobService.getSearchSuggestions(query)));
+    }
+
+    /**
+     * Live search facets and aggregation counts for filter sidebar chips.
+     */
+    @GetMapping("/facets")
+    public ResponseEntity<ApiResponse<SearchFacetsResponse>> getSearchFacets(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String category,
+            @RequestParam(required = false) String city) {
+        JobFilterRequest filter = new JobFilterRequest();
+        filter.setKeyword(keyword);
+        filter.setCategory(category);
+        filter.setCity(city);
+        return ResponseEntity.ok(ApiResponse.success(jobService.getSearchFacets(filter)));
+    }
+
     @GetMapping("/search")
     public ResponseEntity<ApiResponse<Page<JobSummaryResponse>>> searchJobs(
-
             @RequestParam(required = false) String keyword,
-
             @RequestParam(required = false) String city,
-
             @RequestParam(required = false) String state,
-
             @RequestParam(required = false) String country,
-
-            @RequestParam(required = false) JobType jobType,
-
-            @RequestParam(required = false) WorkingMode workingMode,
-
-            @RequestParam(required = false) ExperienceLevel experienceLevel,
-
+            @RequestParam(required = false) String jobType,
+            @RequestParam(required = false) String workingMode,
+            @RequestParam(required = false) String experienceLevel,
             @RequestParam(required = false) Long minimumSalary,
-
             @RequestParam(required = false) Long maximumSalary,
-
             @RequestParam(required = false) List<String> skills,
-
             @RequestParam(required = false) String category,
-
             @RequestParam(required = false) String qualification,
-
             @RequestParam(required = false) Boolean featured,
-
             @RequestParam(required = false) Boolean urgentHiring,
-
             @RequestParam(required = false) Boolean easyApply,
-
-            @PageableDefault(
-                    size = 10,
-                    sort = "createdAt",
-                    direction = Sort.Direction.DESC
-            )
+            @RequestParam(required = false) Integer postedWithinDays,
+            @RequestParam(required = false) String sortBy,
+            @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC)
             Pageable pageable) {
 
         JobFilterRequest filter = new JobFilterRequest();
-
         filter.setKeyword(keyword);
         filter.setCity(city);
         filter.setState(state);
         filter.setCountry(country);
-        filter.setJobType(jobType);
-        filter.setWorkingMode(workingMode);
-        filter.setExperienceLevel(experienceLevel);
+        filter.setJobTypes(parseJobTypes(jobType));
+        filter.setWorkingModes(parseWorkingModes(workingMode));
+        filter.setExperienceLevels(parseExperienceLevels(experienceLevel));
         filter.setMinimumSalary(minimumSalary);
         filter.setMaximumSalary(maximumSalary);
         filter.setSkills(skills);
@@ -185,11 +147,50 @@ public class JobController {
         filter.setFeatured(featured);
         filter.setUrgentHiring(urgentHiring);
         filter.setEasyApply(easyApply);
+        filter.setPostedWithinDays(postedWithinDays);
+        filter.setSortBy(sortBy);
 
-        Page<JobSummaryResponse> jobs = jobService.filterJobs(filter, pageable);
-
-        return ResponseEntity.ok(ApiResponse.success(jobs));
+        return ResponseEntity.ok(ApiResponse.success(jobService.filterJobs(filter, pageable)));
     }
+
+    private List<JobType> parseJobTypes(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return new ArrayList<>();
+        List<JobType> list = new ArrayList<>();
+        for (String s : raw.split(",")) {
+            String clean = s.trim();
+            if (!clean.isEmpty()) {
+                try {
+                    list.add(JobType.valueOf(clean.toUpperCase()));
+                } catch (IllegalArgumentException ignored) {}
+            }
+        }
+        return list;
+    }
+
+    private List<WorkingMode> parseWorkingModes(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return new ArrayList<>();
+        List<WorkingMode> list = new ArrayList<>();
+        for (String s : raw.split(",")) {
+            WorkingMode mode = WorkingMode.fromString(s.trim());
+            if (mode != null) {
+                list.add(mode);
+            }
+        }
+        return list;
+    }
+
+    private List<ExperienceLevel> parseExperienceLevels(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return new ArrayList<>();
+        List<ExperienceLevel> list = new ArrayList<>();
+        for (String s : raw.split(",")) {
+            ExperienceLevel level = ExperienceLevel.fromString(s.trim());
+            if (level != null) {
+                list.add(level);
+            }
+        }
+        return list;
+    }
+
 
     /**
      * Advanced filter endpoint. Uses POST (not GET) because complex filter
@@ -223,24 +224,15 @@ public class JobController {
         return ResponseEntity.ok(ApiResponse.success(
                 jobService.getJobsByCategory(category, pageable)));
     }
-    
+
     @GetMapping("/categories")
     public ResponseEntity<ApiResponse<List<CategoryResponse>>> getCategories() {
-
-        return ResponseEntity.ok(
-                ApiResponse.success(
-                        jobService.getCategories()
-                )
-        );
+        return ResponseEntity.ok(ApiResponse.success(jobService.getCategories()));
     }
+
     @GetMapping("/work-modes")
     public ResponseEntity<ApiResponse<List<WorkModeResponse>>> getWorkModes() {
-
-        return ResponseEntity.ok(
-                ApiResponse.success(
-                        jobService.getWorkModes()
-                )
-        );
+        return ResponseEntity.ok(ApiResponse.success(jobService.getWorkModes()));
     }
 
     @GetMapping("/latest")

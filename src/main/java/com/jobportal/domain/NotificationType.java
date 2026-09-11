@@ -78,5 +78,15 @@ public enum NotificationType {
     /** Account-related event (email verified, password changed, etc.). */
     ACCOUNT,
     /** Security event (new-device login, suspicious activity, account locked). */
-    SECURITY
+    SECURITY,
+
+    // ── Recruiter Verification ────────────────────────────────────────────────
+    /** Recruiter submitted their verification information — awaiting admin review. */
+    VERIFICATION_SUBMITTED,
+    /** Admin approved the recruiter account — full access granted. */
+    RECRUITER_APPROVED,
+    /** Admin rejected the recruiter account — rejection reason provided. */
+    RECRUITER_REJECTED,
+    /** Admin suspended the recruiter account — access immediately revoked. */
+    RECRUITER_SUSPENDED
 }

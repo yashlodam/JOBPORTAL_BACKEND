@@ -2,24 +2,33 @@ package com.jobportal.event;
 
 import org.springframework.context.ApplicationEvent;
 
-import com.jobportal.entity.User;
+import com.jobportal.domain.AccountType;
 
 /**
- * Published by {@link com.jobportal.serviceImpl.UserServiceImpl}
- * after a new user successfully completes registration.
- *
- * <p>Carries the saved {@link User} entity — it is fully flushed by the time
- * the listener runs ({@code AFTER_COMMIT}), so accessing {@code user.getName()}
- * or {@code user.getAccountType()} is safe.</p>
+ * Published after a new user successfully completes registration.
+ * Scalar-only — no JPA entity references.
  */
 public class UserRegisteredEvent extends ApplicationEvent {
 
-    private final User user;
+    private final Long        userId;
+    private final String      name;
+    private final String      email;
+    private final AccountType accountType;
 
-    public UserRegisteredEvent(Object source, User user) {
+    public UserRegisteredEvent(Object source,
+                               Long userId,
+                               String name,
+                               String email,
+                               AccountType accountType) {
         super(source);
-        this.user = user;
+        this.userId      = userId;
+        this.name        = name;
+        this.email       = email;
+        this.accountType = accountType;
     }
 
-    public User getUser() { return user; }
+    public Long        getUserId()     { return userId; }
+    public String      getName()       { return name; }
+    public String      getEmail()      { return email; }
+    public AccountType getAccountType(){ return accountType; }
 }

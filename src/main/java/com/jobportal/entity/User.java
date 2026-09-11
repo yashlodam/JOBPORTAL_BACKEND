@@ -16,7 +16,14 @@ import jakarta.persistence.OneToOne;
 import jakarta.persistence.Table;
 
 @Entity
-@Table(name = "users")
+@Table(
+    name = "users",
+    indexes = {
+        @jakarta.persistence.Index(name = "idx_users_email", columnList = "email"),
+        @jakarta.persistence.Index(name = "idx_users_account_type", columnList = "account_type"),
+        @jakarta.persistence.Index(name = "idx_users_is_active", columnList = "is_active")
+    }
+)
 public class User extends Auditable {
 
     @Id
