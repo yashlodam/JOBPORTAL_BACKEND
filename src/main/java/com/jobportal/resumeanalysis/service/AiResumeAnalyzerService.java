@@ -28,7 +28,7 @@ public class AiResumeAnalyzerService {
 
     private static final String MODEL_PRIMARY = "openai/gpt-oss-120b";
     private static final String MODEL_FALLBACK_1 = "openai/gpt-oss-20b";
-    private static final String MODEL_FALLBACK_2 = "qwen/qwen3.8-27b";
+    private static final String MODEL_FALLBACK_2 = "groq/compound-mini";
 
     private final ChatClient chatClient;
     private final ObjectMapper objectMapper;
@@ -75,27 +75,18 @@ public class AiResumeAnalyzerService {
 
         AiAnalysisResult result = null;
 
-        // Attempt 1: Call primary configured model with entity mapping (default temperature 0.0)
+        // Attempt 1: Call primary configured model with direct JSON content parsing (sub-2s latency)
         try {
-            result = chatClient
+            String raw = chatClient
                     .prompt()
+                    .options(OpenAiChatOptions.builder().model(MODEL_PRIMARY).temperature(0.0))
                     .system(SYSTEM_PROMPT)
                     .user("Analyze the following resume text:\n\n" + truncated)
                     .call()
-                    .entity(AiAnalysisResult.class);
+                    .content();
+            result = parseJsonResult(raw);
         } catch (Exception e) {
-            log.warn("Primary AI call with entity mapping failed: {}. Trying primary model raw content...", e.getMessage());
-            try {
-                String raw = chatClient
-                        .prompt()
-                        .system(SYSTEM_PROMPT)
-                        .user("Analyze the following resume text:\n\n" + truncated)
-                        .call()
-                        .content();
-                result = parseJsonResult(raw);
-            } catch (Exception eRaw) {
-                log.warn("Primary model raw call failed: {}. Attempting fallback model [{}]...", eRaw.getMessage(), MODEL_FALLBACK_1);
-            }
+            log.warn("Primary AI call [{}] failed: {}. Trying fallback model 1 [{}]...", MODEL_PRIMARY, e.getMessage(), MODEL_FALLBACK_1);
         }
 
         // Attempt 2: Fallback model 1 (openai/gpt-oss-20b)
@@ -114,7 +105,7 @@ public class AiResumeAnalyzerService {
             }
         }
 
-        // Attempt 3: Fallback model 2 (qwen/qwen3.8-27b)
+        // Attempt 3: Fallback model 2 (groq/compound-mini)
         if (result == null) {
             try {
                 String raw = chatClient

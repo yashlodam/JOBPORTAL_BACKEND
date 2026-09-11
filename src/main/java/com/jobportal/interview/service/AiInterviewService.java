@@ -27,8 +27,9 @@ public class AiInterviewService {
 
     private static final Logger log = LoggerFactory.getLogger(AiInterviewService.class);
 
+    private static final String MODEL_PRIMARY = "openai/gpt-oss-120b";
     private static final String MODEL_FALLBACK_1 = "openai/gpt-oss-20b";
-    private static final String MODEL_FALLBACK_2 = "qwen/qwen3.8-27b";
+    private static final String MODEL_FALLBACK_2 = "groq/compound-mini";
 
     private final ChatClient chatClient;
     private final ObjectMapper objectMapper;
@@ -64,27 +65,18 @@ public class AiInterviewService {
 
         AiQuestionResult result = null;
 
-        // 1. Primary call with entity mapping
+        // 1. Primary call
         try {
-            result = chatClient
+            String raw = chatClient
                     .prompt()
+                    .options(OpenAiChatOptions.builder().model(MODEL_PRIMARY).temperature(0.2))
                     .system(QUESTION_SYSTEM_PROMPT)
-                    .user(promptText)
+                    .user(promptText + "\n\nIMPORTANT: Respond ONLY with valid JSON matching {\"question\": \"...\", \"expectedAnswer\": \"...\", \"difficulty\": \"...\"}")
                     .call()
-                    .entity(AiQuestionResult.class);
+                    .content();
+            result = parseQuestionResult(raw);
         } catch (Exception e) {
-            log.warn("Primary question entity call failed: {}. Attempting raw content parse...", e.getMessage());
-            try {
-                String raw = chatClient
-                        .prompt()
-                        .system(QUESTION_SYSTEM_PROMPT)
-                        .user(promptText + "\n\nIMPORTANT: Respond ONLY with valid JSON matching {\"question\": \"...\", \"expectedAnswer\": \"...\", \"difficulty\": \"...\"}")
-                        .call()
-                        .content();
-                result = parseQuestionResult(raw);
-            } catch (Exception eRaw) {
-                log.warn("Primary question raw call failed: {}. Trying fallback model [{}]...", eRaw.getMessage(), MODEL_FALLBACK_1);
-            }
+            log.warn("Primary question call failed: {}. Trying fallback model [{}]...", e.getMessage(), MODEL_FALLBACK_1);
         }
 
         // 2. Fallback model 1
@@ -159,27 +151,18 @@ public class AiInterviewService {
 
         AiEvaluationResult result = null;
 
-        // 1. Primary call with entity mapping
+        // 1. Primary call
         try {
-            result = chatClient
+            String raw = chatClient
                     .prompt()
+                    .options(OpenAiChatOptions.builder().model(MODEL_PRIMARY).temperature(0.1))
                     .system(EVALUATION_SYSTEM_PROMPT)
-                    .user(promptText)
+                    .user(promptText + "\n\nIMPORTANT: Respond ONLY with valid JSON matching {\"score\": 85, \"feedback\": \"...\", \"strengths\": [...], \"weaknesses\": [...], \"suggestions\": [...], \"idealAnswer\": \"...\", \"followUpQuestion\": \"...\"}")
                     .call()
-                    .entity(AiEvaluationResult.class);
+                    .content();
+            result = parseEvaluationResult(raw);
         } catch (Exception e) {
-            log.warn("Primary evaluation entity call failed: {}. Attempting raw content parse...", e.getMessage());
-            try {
-                String raw = chatClient
-                        .prompt()
-                        .system(EVALUATION_SYSTEM_PROMPT)
-                        .user(promptText + "\n\nIMPORTANT: Respond ONLY with valid JSON matching {\"score\": 85, \"feedback\": \"...\", \"strengths\": [...], \"weaknesses\": [...], \"suggestions\": [...], \"idealAnswer\": \"...\", \"followUpQuestion\": \"...\"}")
-                        .call()
-                        .content();
-                result = parseEvaluationResult(raw);
-            } catch (Exception eRaw) {
-                log.warn("Primary evaluation raw call failed: {}. Trying fallback model [{}]...", eRaw.getMessage(), MODEL_FALLBACK_1);
-            }
+            log.warn("Primary evaluation call failed: {}. Trying fallback model [{}]...", e.getMessage(), MODEL_FALLBACK_1);
         }
 
         // 2. Fallback model 1
