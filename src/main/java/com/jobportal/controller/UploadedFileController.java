@@ -39,7 +39,10 @@ public class UploadedFileController {
             Resource resource = fileStorageService.loadAsResource(relativePath);
 
             if (resource == null || !resource.exists()) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .header(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                        .header(HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS, "GET, HEAD, OPTIONS")
+                        .build();
             }
 
             String contentType = fileStorageService.getContentType(relativePath);
@@ -59,7 +62,10 @@ public class UploadedFileController {
 
         } catch (Exception e) {
             log.error("[UploadedFileController] Error loading file '{}/{}': {}", subDir, fileName, e.getMessage());
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .header(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+                    .header(HttpHeaders.ACCESS_CONTROL_ALLOW_METHODS, "GET, HEAD, OPTIONS")
+                    .build();
         }
     }
 }

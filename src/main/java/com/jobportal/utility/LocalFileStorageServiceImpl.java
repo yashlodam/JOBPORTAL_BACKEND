@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -23,6 +24,8 @@ import org.springframework.web.multipart.MultipartFile;
 import com.jobportal.entity.StoredFile;
 import com.jobportal.exception.JobPortalException;
 import com.jobportal.repository.StoredFileRepository;
+
+import jakarta.annotation.PostConstruct;
 
 /**
  * Resilient FileStorageService implementation.
@@ -44,12 +47,34 @@ public class LocalFileStorageServiceImpl implements FileStorageService {
 
     private final String uploadBaseDir;
     private final StoredFileRepository storedFileRepository;
+    private final JdbcTemplate jdbcTemplate;
 
     public LocalFileStorageServiceImpl(
             @Value("${file.upload.base-dir:uploads}") String uploadBaseDir,
-            StoredFileRepository storedFileRepository) {
+            StoredFileRepository storedFileRepository,
+            JdbcTemplate jdbcTemplate) {
         this.uploadBaseDir = uploadBaseDir;
         this.storedFileRepository = storedFileRepository;
+        this.jdbcTemplate = jdbcTemplate;
+    }
+
+    @PostConstruct
+    public void initTable() {
+        try {
+            jdbcTemplate.execute(
+                "CREATE TABLE IF NOT EXISTS stored_files (" +
+                "id BIGSERIAL PRIMARY KEY, " +
+                "file_path VARCHAR(512) NOT NULL UNIQUE, " +
+                "content_type VARCHAR(128), " +
+                "file_data BYTEA NOT NULL, " +
+                "file_size BIGINT, " +
+                "created_at TIMESTAMP WITHOUT TIME ZONE DEFAULT CURRENT_TIMESTAMP" +
+                ")"
+            );
+            log.info("[FileStorage] Ensured 'stored_files' table exists in database.");
+        } catch (Exception e) {
+            log.warn("[FileStorage] Could not auto-create 'stored_files' table (may already exist or permission limited): {}", e.getMessage());
+        }
     }
 
     @Override
@@ -134,26 +159,30 @@ public class LocalFileStorageServiceImpl implements FileStorageService {
         }
 
         // 2. Fallback to database store (ephemeral container self-healing)
-        Optional<StoredFile> storedOpt = storedFileRepository.findByFilePath(relativePath);
-        if (storedOpt.isPresent()) {
-            StoredFile stored = storedOpt.get();
-            byte[] data = stored.getData();
-            if (data != null && data.length > 0) {
-                // Restore to disk cache in background
-                try {
-                    Files.createDirectories(localPath.getParent());
-                    Files.write(localPath, data);
-                    log.info("[FileStorage] Restored missing file '{}' from database to disk cache.", relativePath);
-                } catch (Exception e) {
-                    log.warn("[FileStorage] Could not restore file to disk cache: {}", e.getMessage());
-                }
-                return new ByteArrayResource(data) {
-                    @Override
-                    public String getFilename() {
-                        return localPath.getFileName().toString();
+        try {
+            Optional<StoredFile> storedOpt = storedFileRepository.findByFilePath(relativePath);
+            if (storedOpt.isPresent()) {
+                StoredFile stored = storedOpt.get();
+                byte[] data = stored.getData();
+                if (data != null && data.length > 0) {
+                    // Restore to disk cache in background
+                    try {
+                        Files.createDirectories(localPath.getParent());
+                        Files.write(localPath, data);
+                        log.info("[FileStorage] Restored missing file '{}' from database to disk cache.", relativePath);
+                    } catch (Exception e) {
+                        log.warn("[FileStorage] Could not restore file to disk cache: {}", e.getMessage());
                     }
-                };
+                    return new ByteArrayResource(data) {
+                        @Override
+                        public String getFilename() {
+                            return localPath.getFileName().toString();
+                        }
+                    };
+                }
             }
+        } catch (Exception e) {
+            log.warn("[FileStorage] Could not fetch file '{}' from database store: {}", relativePath, e.getMessage());
         }
 
         return null;
@@ -163,10 +192,12 @@ public class LocalFileStorageServiceImpl implements FileStorageService {
     @Transactional(readOnly = true)
     public String getContentType(String relativePath) {
         if (relativePath == null) return "application/octet-stream";
-        Optional<StoredFile> storedOpt = storedFileRepository.findByFilePath(relativePath);
-        if (storedOpt.isPresent() && storedOpt.get().getContentType() != null) {
-            return storedOpt.get().getContentType();
-        }
+        try {
+            Optional<StoredFile> storedOpt = storedFileRepository.findByFilePath(relativePath);
+            if (storedOpt.isPresent() && storedOpt.get().getContentType() != null) {
+                return storedOpt.get().getContentType();
+            }
+        } catch (Exception ignored) {}
         try {
             Path localPath = Paths.get(uploadBaseDir, relativePath).toAbsolutePath().normalize();
             String probed = Files.probeContentType(localPath);
