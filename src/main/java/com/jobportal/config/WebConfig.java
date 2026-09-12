@@ -5,6 +5,7 @@ import java.nio.file.Paths;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
@@ -17,7 +18,7 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
         Path uploadDir = Paths.get(uploadBaseDir).toAbsolutePath().normalize();
-        String uploadUri = uploadDir.toUri().toString(); // e.g. "file:///C:/Users/.../uploads/"
+        String uploadUri = uploadDir.toUri().toString();
         if (!uploadUri.endsWith("/")) {
             uploadUri += "/";
         }
@@ -25,5 +26,14 @@ public class WebConfig implements WebMvcConfigurer {
         registry.addResourceHandler("/uploads/**")
                 .addResourceLocations(uploadUri)
                 .setCachePeriod(3600);
+    }
+
+    @Override
+    public void addCorsMappings(CorsRegistry registry) {
+        registry.addMapping("/uploads/**")
+                .allowedOriginPatterns("*")
+                .allowedMethods("GET", "HEAD", "OPTIONS")
+                .allowedHeaders("*")
+                .maxAge(86400);
     }
 }

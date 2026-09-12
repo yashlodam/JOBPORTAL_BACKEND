@@ -89,7 +89,9 @@ public class Profile extends Auditable {
 
     @Column(columnDefinition = "TEXT")
     private String about;
+    @Column(columnDefinition = "TEXT")
     private String profileImage;
+    @Column(columnDefinition = "TEXT")
     private String bannerImage;
     private String linkedinUrl;
     private String githubUrl;

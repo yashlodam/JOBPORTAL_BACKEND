@@ -1,25 +1,38 @@
 package com.jobportal.utility;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.UrlResource;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import com.jobportal.entity.StoredFile;
 import com.jobportal.exception.JobPortalException;
+import com.jobportal.repository.StoredFileRepository;
 
 /**
- * Local disk implementation of FileStorageService.
- * Files are stored under ${file.upload.base-dir}/{subDir}/{uuid}_{originalName}.
+ * Resilient FileStorageService implementation.
+ * Combines local disk caching for fast streaming with PostgreSQL database persistence
+ * so uploads are never lost across Render dyno spin-downs, restarts, or redeployments.
  */
 @Service
 public class LocalFileStorageServiceImpl implements FileStorageService {
+
+    private static final Logger log = LoggerFactory.getLogger(LocalFileStorageServiceImpl.class);
 
     private static final Set<String> ALLOWED_IMAGE_TYPES = Set.of(
             "image/jpeg", "image/png", "image/webp", "image/gif");
@@ -30,52 +43,143 @@ public class LocalFileStorageServiceImpl implements FileStorageService {
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
 
     private final String uploadBaseDir;
+    private final StoredFileRepository storedFileRepository;
 
     public LocalFileStorageServiceImpl(
-            @Value("${file.upload.base-dir}") String uploadBaseDir) {
+            @Value("${file.upload.base-dir:uploads}") String uploadBaseDir,
+            StoredFileRepository storedFileRepository) {
         this.uploadBaseDir = uploadBaseDir;
+        this.storedFileRepository = storedFileRepository;
     }
 
     @Override
+    @Transactional
     public String store(MultipartFile file, String subDir) throws Exception {
         if (file == null || file.isEmpty()) {
             throw JobPortalException.badRequest("File must not be empty");
         }
 
         String contentType = file.getContentType();
-        boolean isResume = "resume".equals(subDir);
+        boolean isResume = "resume".equalsIgnoreCase(subDir);
         Set<String> allowed = isResume ? ALLOWED_DOCUMENT_TYPES : ALLOWED_IMAGE_TYPES;
 
-        if (contentType == null || !allowed.contains(contentType)) {
+        if (contentType == null || !allowed.contains(contentType.toLowerCase())) {
             String types = isResume ? "PDF, DOC, DOCX" : "JPEG, PNG, WEBP, GIF";
             throw JobPortalException.badRequest("Invalid file type. Allowed: " + types);
         }
 
-        String directory = uploadBaseDir + "/" + subDir + "/";
-        File dir = new File(directory);
-        if (!dir.exists()) {
-            dir.mkdirs();
-        }
-
         String sanitizedName = sanitize(file.getOriginalFilename());
         String fileName = UUID.randomUUID() + "_" + sanitizedName;
-        Path destinationPath = Paths.get(directory + fileName);
-        Files.copy(file.getInputStream(), destinationPath, StandardCopyOption.REPLACE_EXISTING);
+        String relativePath = subDir + "/" + fileName;
 
-        return subDir + "/" + fileName;
+        // 1. Write to local disk cache
+        try {
+            Path directory = Paths.get(uploadBaseDir, subDir).toAbsolutePath().normalize();
+            Files.createDirectories(directory);
+            Path destinationPath = directory.resolve(fileName);
+            Files.copy(file.getInputStream(), destinationPath, StandardCopyOption.REPLACE_EXISTING);
+        } catch (Exception e) {
+            log.warn("[FileStorage] Could not write to local disk cache: {}", e.getMessage());
+        }
+
+        // 2. Persist to PostgreSQL database backing store
+        try {
+            byte[] bytes = file.getBytes();
+            StoredFile storedFile = storedFileRepository.findByFilePath(relativePath)
+                    .orElse(new StoredFile());
+            storedFile.setFilePath(relativePath);
+            storedFile.setContentType(contentType);
+            storedFile.setData(bytes);
+            storedFile.setFileSize(file.getSize());
+            storedFileRepository.save(storedFile);
+            log.info("[FileStorage] Successfully stored file '{}' ({} bytes) in database & disk.", relativePath, bytes.length);
+        } catch (Exception e) {
+            log.error("[FileStorage] Error persisting file '{}' to database: {}", relativePath, e.getMessage(), e);
+        }
+
+        return relativePath;
     }
 
     @Override
+    @Transactional
     public void delete(String relativePath) {
         if (relativePath == null || relativePath.isBlank()) {
             return;
         }
         try {
-            Path path = Paths.get(uploadBaseDir + "/" + relativePath);
+            Path path = Paths.get(uploadBaseDir, relativePath).toAbsolutePath().normalize();
             Files.deleteIfExists(path);
         } catch (Exception ignored) {
-            // Non-critical — log in production
         }
+
+        try {
+            storedFileRepository.deleteByFilePath(relativePath);
+        } catch (Exception e) {
+            log.warn("[FileStorage] Could not delete file '{}' from database: {}", relativePath, e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Resource loadAsResource(String relativePath) throws Exception {
+        if (relativePath == null || relativePath.isBlank()) {
+            return null;
+        }
+
+        Path localPath = Paths.get(uploadBaseDir, relativePath).toAbsolutePath().normalize();
+
+        // 1. Check local disk
+        if (Files.exists(localPath) && Files.isReadable(localPath) && Files.size(localPath) > 0) {
+            return new UrlResource(localPath.toUri());
+        }
+
+        // 2. Fallback to database store (ephemeral container self-healing)
+        Optional<StoredFile> storedOpt = storedFileRepository.findByFilePath(relativePath);
+        if (storedOpt.isPresent()) {
+            StoredFile stored = storedOpt.get();
+            byte[] data = stored.getData();
+            if (data != null && data.length > 0) {
+                // Restore to disk cache in background
+                try {
+                    Files.createDirectories(localPath.getParent());
+                    Files.write(localPath, data);
+                    log.info("[FileStorage] Restored missing file '{}' from database to disk cache.", relativePath);
+                } catch (Exception e) {
+                    log.warn("[FileStorage] Could not restore file to disk cache: {}", e.getMessage());
+                }
+                return new ByteArrayResource(data) {
+                    @Override
+                    public String getFilename() {
+                        return localPath.getFileName().toString();
+                    }
+                };
+            }
+        }
+
+        return null;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String getContentType(String relativePath) {
+        if (relativePath == null) return "application/octet-stream";
+        Optional<StoredFile> storedOpt = storedFileRepository.findByFilePath(relativePath);
+        if (storedOpt.isPresent() && storedOpt.get().getContentType() != null) {
+            return storedOpt.get().getContentType();
+        }
+        try {
+            Path localPath = Paths.get(uploadBaseDir, relativePath).toAbsolutePath().normalize();
+            String probed = Files.probeContentType(localPath);
+            if (probed != null) return probed;
+        } catch (Exception ignored) {}
+
+        String lower = relativePath.toLowerCase();
+        if (lower.endsWith(".png")) return "image/png";
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+        if (lower.endsWith(".webp")) return "image/webp";
+        if (lower.endsWith(".gif")) return "image/gif";
+        if (lower.endsWith(".pdf")) return "application/pdf";
+        return "application/octet-stream";
     }
 
     private String sanitize(String originalFilename) {

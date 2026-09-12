@@ -199,6 +199,8 @@ public class UserServiceImpl implements UserService {
 
         if (user.getProfile() != null) {
             response.setProfileId(user.getProfile().getId());
+            response.setProfileImage(user.getProfile().getProfileImage());
+            response.setBannerImage(user.getProfile().getBannerImage());
         }
         if (user.getRecruiter() != null) {
             response.setRecruiterId(user.getRecruiter().getId());

@@ -52,6 +52,11 @@ public class ProfileController {
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<ProfileResponse>> getMyProfile(
             Authentication authentication) throws JobPortalException {
+        if (authentication == null || !authentication.isAuthenticated()
+                || "anonymousUser".equalsIgnoreCase(authentication.getName())) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.<ProfileResponse>error("Not authenticated"));
+        }
         return ResponseEntity.ok(ApiResponse.success(
                 profileService.getMyProfile(authentication.getName())));
     }

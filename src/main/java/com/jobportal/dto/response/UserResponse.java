@@ -16,6 +16,8 @@ public class UserResponse {
     private Boolean isActive;
     private Long profileId;
     private Long recruiterId;
+    private String profileImage;
+    private String bannerImage;
     private LocalDateTime createdAt;
 
     public Long getId() { return id; }
@@ -38,6 +40,12 @@ public class UserResponse {
 
     public Long getRecruiterId() { return recruiterId; }
     public void setRecruiterId(Long recruiterId) { this.recruiterId = recruiterId; }
+
+    public String getProfileImage() { return profileImage; }
+    public void setProfileImage(String profileImage) { this.profileImage = profileImage; }
+
+    public String getBannerImage() { return bannerImage; }
+    public void setBannerImage(String bannerImage) { this.bannerImage = bannerImage; }
 
     public LocalDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }

@@ -1,11 +1,11 @@
 package com.jobportal.utility;
 
+import org.springframework.core.io.Resource;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
  * Abstraction for file storage operations.
- * Use LocalFileStorageServiceImpl for local disk.
- * Can be swapped for S3FileStorageServiceImpl for production cloud storage.
+ * Supports hybrid local disk cache + persistent database backing.
  */
 public interface FileStorageService {
 
@@ -20,7 +20,17 @@ public interface FileStorageService {
 
     /**
      * Deletes a previously stored file by its relative path.
-     * Silently does nothing if the file does not exist.
      */
     void delete(String relativePath);
+
+    /**
+     * Loads a file as a Spring Resource. If missing from local disk (e.g. after container restart),
+     * recovers from database backing store and restores to disk cache.
+     */
+    Resource loadAsResource(String relativePath) throws Exception;
+
+    /**
+     * Determines the content type of the file.
+     */
+    String getContentType(String relativePath);
 }

@@ -1,5 +1,9 @@
 package com.jobportal.config;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,9 +21,6 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-
-import java.util.Arrays;
-import java.util.List;
 
 @Configuration
 @EnableMethodSecurity
@@ -49,20 +50,37 @@ public class SecurityConfig {
     @Bean
     CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        List<String> origins = Arrays.stream(allowedOrigins.split(","))
+        List<String> origins = new ArrayList<>(Arrays.stream(allowedOrigins.split(","))
                 .map(String::trim)
                 .filter(s -> !s.isEmpty())
-                .toList();
-        
+                .toList());
+
+        // Always permit local development ports and Vercel preview domains
+        for (String devOrigin : List.of(
+                "http://localhost:5173", "http://localhost:3000", "http://localhost:5174",
+                "http://127.0.0.1:5173", "http://127.0.0.1:3000", "http://127.0.0.1:5174",
+                "https://*.vercel.app", "https://job-portal-frontend-rho-nine.vercel.app")) {
+            if (!origins.contains(devOrigin)) {
+                origins.add(devOrigin);
+            }
+        }
+
         configuration.setAllowedOriginPatterns(origins);
         configuration.setAllowedMethods(
                 List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setExposedHeaders(List.of("Content-Type", "Set-Cookie", "Authorization"));
-        // Required for cookies to be sent cross-origin (withCredentials: true on frontend)
         configuration.setAllowCredentials(true);
 
+        // Uploaded static assets (avatars, banners, resumes) must have open CORS
+        CorsConfiguration uploadCors = new CorsConfiguration();
+        uploadCors.setAllowedOriginPatterns(List.of("*"));
+        uploadCors.setAllowedMethods(List.of("GET", "HEAD", "OPTIONS"));
+        uploadCors.setAllowedHeaders(List.of("*"));
+        uploadCors.setMaxAge(86400L);
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/uploads/**", uploadCors);
         source.registerCorsConfiguration("/**", configuration);
         return source;
     }
@@ -80,7 +98,6 @@ public class SecurityConfig {
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            // REST APIs with SameSite=Lax HttpOnly cookies are protected against cross-origin CSRF.
             .csrf(csrf -> csrf.disable())
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .sessionManagement(session ->
@@ -136,8 +153,9 @@ public class SecurityConfig {
                         "/api/companies/search"
                 ).permitAll()
 
-                // ── Public Profile View ──
-                .requestMatchers(HttpMethod.GET, "/api/profile/{email}", "/api/profile/**").permitAll()
+                // ── Profile Endpoints: /me requires authentication ──
+                .requestMatchers("/api/profile/me", "/api/profile/me/**").authenticated()
+                .requestMatchers(HttpMethod.GET, "/api/profile/{email}", "/api/profile/*").permitAll()
 
                 // ── Notifications Endpoints (Public access for count/feed, handled gracefully in controller) ──
                 .requestMatchers(

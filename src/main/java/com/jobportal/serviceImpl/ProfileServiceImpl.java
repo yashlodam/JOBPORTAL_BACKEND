@@ -94,7 +94,7 @@ public class ProfileServiceImpl implements ProfileService {
     // ── Profile Reads ────────────────────────────────────────────────────────
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public ProfileResponse getMyProfile(String email) throws JobPortalException {
         // findProfileByEmailWithDetails loads user + resume via EntityGraph;
         // skills/languages/experiences/educations/certifications are batch-loaded
@@ -103,7 +103,7 @@ public class ProfileServiceImpl implements ProfileService {
     }
 
     @Override
-    @Transactional(readOnly = true)
+    @Transactional
     public ProfileResponse getProfileByEmail(String email) throws JobPortalException {
         return toResponse(findProfileByEmailWithDetails(email));
     }
