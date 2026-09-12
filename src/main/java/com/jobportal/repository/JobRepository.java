@@ -240,13 +240,16 @@ public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificatio
     // ── Recommendation Engine ─────────────────────────────────────────────────
 
     /**
-     * Fetches all OPEN jobs that a given applicant has NOT yet applied to.
+     * Fetches up to {@code pageable.getPageSize()} OPEN jobs that a given applicant has NOT yet applied to.
      * Used as the candidate pool for the deterministic recommendation engine.
      *
      * <p>EntityGraph loads company + recruiter for DTO mapping.
      * The NOT IN clause leverages the index on job_applications(applicant_id).
      * For applicants with no prior applications, the subquery returns an empty list
-     * and ALL open jobs are returned as candidates.
+     * and the most recent OPEN jobs are returned (capped by Pageable).</p>
+     *
+     * <p><strong>IMPORTANT:</strong> Always call this with a bounded Pageable (e.g. PageRequest.of(0, 50))
+     * to prevent loading the entire jobs table into heap memory for new applicants.</p>
      */
     @EntityGraph(attributePaths = {"company", "recruiter", "recruiter.user"})
     @Query("""
@@ -258,7 +261,7 @@ public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificatio
           )
         ORDER BY j.createdAt DESC
         """)
-    List<Job> findOpenJobsNotAppliedByApplicant(@Param("applicantId") Long applicantId);
+    List<Job> findOpenJobsNotAppliedByApplicant(@Param("applicantId") Long applicantId, Pageable pageable);
 
     // ── Admin / Suspension Operations ─────────────────────────────────────────
 

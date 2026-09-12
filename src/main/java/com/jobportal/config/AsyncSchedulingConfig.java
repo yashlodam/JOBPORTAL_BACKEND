@@ -32,13 +32,17 @@ public class AsyncSchedulingConfig implements AsyncConfigurer {
 
     private static final Logger log = LoggerFactory.getLogger(AsyncSchedulingConfig.class);
 
-    @Value("${async.core-pool-size:5}")
+    // ── Defaults are deliberately low for Render Free 512MB container ──────────
+    // application.properties sets async.core-pool-size=2, async.max-pool-size=4.
+    // Fallback defaults here match production values so even if the property file
+    // is missing, the container does NOT spin up 25 threads.
+    @Value("${async.core-pool-size:2}")
     private int corePoolSize;
 
-    @Value("${async.max-pool-size:25}")
+    @Value("${async.max-pool-size:4}")
     private int maxPoolSize;
 
-    @Value("${async.queue-capacity:500}")
+    @Value("${async.queue-capacity:100}")
     private int queueCapacity;
 
     @Value("${async.thread-name-prefix:jobportal-async-}")

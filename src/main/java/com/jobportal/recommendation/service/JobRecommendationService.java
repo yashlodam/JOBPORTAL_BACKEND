@@ -14,6 +14,7 @@ import java.util.Optional;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -229,8 +230,10 @@ public class JobRecommendationService {
         log.info("Extracted [{}] candidate skills for user=[{}]: {}",
                 candidateSkills.size(), email, candidateSkills);
 
-        // 5. Fetch candidate job pool (OPEN, not yet applied)
-        List<Job> candidateJobs = jobRepository.findOpenJobsNotAppliedByApplicant(user.getId());
+        // 5. Fetch candidate job pool (OPEN, not yet applied) — BOUNDED to 50 to prevent OOM.
+        // A new applicant with 0 applications would previously load ALL open jobs into heap.
+        List<Job> candidateJobs = jobRepository.findOpenJobsNotAppliedByApplicant(
+                user.getId(), PageRequest.of(0, 50));
 
         // Fallback: all top open jobs if candidate has applied to everything
         if (candidateJobs == null || candidateJobs.isEmpty()) {

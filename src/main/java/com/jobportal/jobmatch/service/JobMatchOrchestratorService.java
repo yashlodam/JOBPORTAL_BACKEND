@@ -230,7 +230,8 @@ public class JobMatchOrchestratorService {
                 }
 
                 if (uploadedSummary == null && resumeRawText != null && !resumeRawText.isBlank()) {
-                    uploadedSummary = resumeRawText.length() > 3000 ? resumeRawText.substring(0, 3000) : resumeRawText;
+                    // Cap at 1500 chars — AI service further trims to 1000 in prompt context
+                    uploadedSummary = resumeRawText.length() > 1500 ? resumeRawText.substring(0, 1500) : resumeRawText;
                 }
             } catch (Exception e) {
                 log.warn("Could not inspect uploaded resume for application {}: {}", applicationId, e.getMessage());

@@ -115,7 +115,9 @@ public class AiJobMatchService {
         sb.append("Required Skills: ").append(job.getSkillsRequired() != null ? String.join(", ", job.getSkillsRequired()) : "None specified").append("\n");
         sb.append("Preferred Skills: ").append(job.getPreferredSkills() != null ? String.join(", ", job.getPreferredSkills()) : "None").append("\n");
         if (job.getResponsibilities() != null && !job.getResponsibilities().isBlank()) {
-            sb.append("Key Responsibilities: ").append(job.getResponsibilities()).append("\n");
+            // Cap responsibilities at 500 chars to prevent oversized AI prompts
+            String resp = job.getResponsibilities().trim();
+            sb.append("Key Responsibilities: ").append(resp.length() > 500 ? resp.substring(0, 500) + "..." : resp).append("\n");
         }
         return sb.toString();
     }
@@ -129,7 +131,11 @@ public class AiJobMatchService {
         StringBuilder sb = new StringBuilder();
         if (profile != null) {
             if (profile.getHeadline() != null) sb.append("Headline: ").append(profile.getHeadline()).append("\n");
-            if (profile.getAbout() != null) sb.append("About: ").append(profile.getAbout()).append("\n");
+            if (profile.getAbout() != null) {
+                // Cap about at 300 chars
+                String about = profile.getAbout().trim();
+                sb.append("About: ").append(about.length() > 300 ? about.substring(0, 300) + "..." : about).append("\n");
+            }
             if (profile.getSkills() != null && !profile.getSkills().isEmpty()) {
                 sb.append("Profile Skills: ").append(String.join(", ", profile.getSkills())).append("\n");
             }
@@ -138,11 +144,16 @@ public class AiJobMatchService {
             sb.append("Uploaded Resume Detected Skills: ").append(String.join(", ", uploadedSkills)).append("\n");
         }
         if (uploadedSummary != null && !uploadedSummary.isBlank()) {
-            sb.append("Uploaded Resume Summary: ").append(uploadedSummary).append("\n");
+            // Cap uploaded resume summary at 1000 chars (was 3000 in prepareContextAndMarkProcessing)
+            String summary = uploadedSummary.trim();
+            sb.append("Uploaded Resume Summary: ").append(summary.length() > 1000 ? summary.substring(0, 1000) + "..." : summary).append("\n");
         }
         if (resumeDoc != null) {
             if (resumeDoc.getProfessionalTitle() != null) sb.append("Resume Title: ").append(resumeDoc.getProfessionalTitle()).append("\n");
-            if (resumeDoc.getProfessionalSummary() != null) sb.append("Summary: ").append(resumeDoc.getProfessionalSummary()).append("\n");
+            if (resumeDoc.getProfessionalSummary() != null) {
+                String summary = resumeDoc.getProfessionalSummary().trim();
+                sb.append("Summary: ").append(summary.length() > 500 ? summary.substring(0, 500) + "..." : summary).append("\n");
+            }
             if (resumeDoc.getSkills() != null && !resumeDoc.getSkills().isEmpty()) {
                 sb.append("Resume Skills: ").append(String.join(", ", resumeDoc.getSkills())).append("\n");
             }
