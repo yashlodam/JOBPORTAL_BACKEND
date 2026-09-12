@@ -225,6 +225,18 @@ public interface JobRepository extends JpaRepository<Job, Long>, JpaSpecificatio
 
     long countByStatus(JobStatus status);
 
+    @Query("SELECT COUNT(j) FROM Job j WHERE (j.recruiter.id = :recruiterId OR j.recruiter.user.id = :userId) AND j.status = :status")
+    long countByRecruiterAndStatus(
+            @Param("recruiterId") Long recruiterId,
+            @Param("userId") Long userId,
+            @Param("status") JobStatus status);
+
+    @Query("SELECT COUNT(j) FROM Job j WHERE (j.recruiter.id = :recruiterId OR j.recruiter.user.id = :userId) AND j.featured = true AND j.status = :status")
+    long countFeaturedByRecruiterAndStatus(
+            @Param("recruiterId") Long recruiterId,
+            @Param("userId") Long userId,
+            @Param("status") JobStatus status);
+
     // ── Recommendation Engine ─────────────────────────────────────────────────
 
     /**

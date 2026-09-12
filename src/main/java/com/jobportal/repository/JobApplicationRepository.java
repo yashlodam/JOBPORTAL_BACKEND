@@ -31,8 +31,24 @@ public interface JobApplicationRepository extends JpaRepository<JobApplication, 
     Page<JobApplication> findByJobId(Long jobId, Pageable pageable);
 
     @EntityGraph(attributePaths = {"job", "job.company", "job.recruiter", "applicant", "resume"})
-    @Query("SELECT ja FROM JobApplication ja WHERE ja.job.recruiter.id = :recruiterId")
-    Page<JobApplication> findByJobRecruiterId(@Param("recruiterId") Long recruiterId, Pageable pageable);
+    @Query(
+        value = "SELECT ja FROM JobApplication ja WHERE ja.job.recruiter.id = :recruiterId OR ja.job.recruiter.user.id = :userId",
+        countQuery = "SELECT COUNT(ja) FROM JobApplication ja WHERE ja.job.recruiter.id = :recruiterId OR ja.job.recruiter.user.id = :userId"
+    )
+    Page<JobApplication> findByJobRecruiterIdOrUserId(@Param("recruiterId") Long recruiterId, @Param("userId") Long userId, Pageable pageable);
+
+    default Page<JobApplication> findByJobRecruiterId(Long recruiterId, Pageable pageable) {
+        return findByJobRecruiterIdOrUserId(recruiterId, recruiterId, pageable);
+    }
+
+    @Query("SELECT COUNT(ja) FROM JobApplication ja WHERE ja.job.recruiter.id = :recruiterId OR ja.job.recruiter.user.id = :userId")
+    long countByJobRecruiterIdOrUserId(@Param("recruiterId") Long recruiterId, @Param("userId") Long userId);
+
+    @Query("SELECT COUNT(ja) FROM JobApplication ja WHERE (ja.job.recruiter.id = :recruiterId OR ja.job.recruiter.user.id = :userId) AND ja.status = :status")
+    long countByJobRecruiterIdOrUserIdAndStatus(
+            @Param("recruiterId") Long recruiterId,
+            @Param("userId") Long userId,
+            @Param("status") com.jobportal.domain.ApplicationStatus status);
 
     @EntityGraph(attributePaths = {"job", "job.company", "applicant", "resume"})
     Optional<JobApplication> findByApplicantIdAndJobId(Long applicantId, Long jobId);

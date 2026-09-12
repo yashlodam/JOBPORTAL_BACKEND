@@ -252,4 +252,15 @@ public class RecruiterController {
                 jobApplicationService.updateApplicationStatus(
                         applicationId, request, authentication.getName())));
     }
+
+    /**
+     * Get real-time aggregated dashboard KPIs for the authenticated recruiter.
+     */
+    @GetMapping({"/dashboard-stats", "/stats"})
+    public ResponseEntity<ApiResponse<com.jobportal.dto.response.RecruiterDashboardStatsResponse>> getDashboardStats(
+            Authentication authentication) throws JobPortalException {
+        return ResponseEntity.ok(ApiResponse.success(
+                jobApplicationService.getRecruiterDashboardStats(authentication.getName())));
+    }
 }
+

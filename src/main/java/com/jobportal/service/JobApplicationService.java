@@ -26,4 +26,7 @@ public interface JobApplicationService {
 
     JobApplicationResponse updateApplicationStatus(Long applicationId,
             UpdateApplicationStatusRequest request, String email) throws JobPortalException;
+
+    com.jobportal.dto.response.RecruiterDashboardStatsResponse getRecruiterDashboardStats(String email)
+            throws JobPortalException;
 }

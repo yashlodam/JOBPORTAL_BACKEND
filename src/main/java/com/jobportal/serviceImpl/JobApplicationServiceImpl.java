@@ -230,8 +230,36 @@ public class JobApplicationServiceImpl implements JobApplicationService {
             throws JobPortalException {
         // ── SECURITY GATE: approved or pending recruiters can view all applications for their jobs ──
         Recruiter recruiter = recruiterAuthorizationService.requireApprovedOrPendingRecruiter(email);
-        return applicationRepository.findByJobRecruiterId(recruiter.getId(), pageable)
+        Long recruiterId = recruiter.getId();
+        Long userId = recruiter.getUser() != null ? recruiter.getUser().getId() : recruiterId;
+        return applicationRepository.findByJobRecruiterIdOrUserId(recruiterId, userId, pageable)
                 .map(this::toResponse);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public com.jobportal.dto.response.RecruiterDashboardStatsResponse getRecruiterDashboardStats(String email)
+            throws JobPortalException {
+        Recruiter recruiter = recruiterAuthorizationService.requireApprovedOrPendingRecruiter(email);
+        Long recruiterId = recruiter.getId();
+        Long userId = recruiter.getUser() != null ? recruiter.getUser().getId() : recruiterId;
+
+        long activeJobs = jobRepository.countByRecruiterAndStatus(recruiterId, userId, com.jobportal.domain.JobStatus.OPEN);
+        long featuredJobs = jobRepository.countFeaturedByRecruiterAndStatus(recruiterId, userId, com.jobportal.domain.JobStatus.OPEN);
+
+        long totalApps = applicationRepository.countByJobRecruiterIdOrUserId(recruiterId, userId);
+        long applied = applicationRepository.countByJobRecruiterIdOrUserIdAndStatus(recruiterId, userId, com.jobportal.domain.ApplicationStatus.APPLIED);
+        long reviewing = applicationRepository.countByJobRecruiterIdOrUserIdAndStatus(recruiterId, userId, com.jobportal.domain.ApplicationStatus.REVIEWING);
+        long newApps = applied + reviewing;
+        long shortlisted = applicationRepository.countByJobRecruiterIdOrUserIdAndStatus(recruiterId, userId, com.jobportal.domain.ApplicationStatus.SHORTLISTED);
+        long interviews = applicationRepository.countByJobRecruiterIdOrUserIdAndStatus(recruiterId, userId, com.jobportal.domain.ApplicationStatus.INTERVIEWING);
+        long offered = applicationRepository.countByJobRecruiterIdOrUserIdAndStatus(recruiterId, userId, com.jobportal.domain.ApplicationStatus.OFFERED);
+        long hired = applicationRepository.countByJobRecruiterIdOrUserIdAndStatus(recruiterId, userId, com.jobportal.domain.ApplicationStatus.ACCEPTED);
+        long rejected = applicationRepository.countByJobRecruiterIdOrUserIdAndStatus(recruiterId, userId, com.jobportal.domain.ApplicationStatus.REJECTED);
+
+        return new com.jobportal.dto.response.RecruiterDashboardStatsResponse(
+                activeJobs, featuredJobs, totalApps, newApps, shortlisted, interviews, offered, hired, rejected
+        );
     }
 
     // ── Status Update ─────────────────────────────────────────────────────────
