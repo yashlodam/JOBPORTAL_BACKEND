@@ -67,6 +67,7 @@ public class ChatWebSocketController {
     private final ConversationParticipantRepository participantRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
+    private final com.jobportal.config.JwtProvider jwtProvider;
 
     public ChatWebSocketController(
             ChatService chatService,
@@ -74,13 +75,15 @@ public class ChatWebSocketController {
             SimpMessagingTemplate messagingTemplate,
             ConversationParticipantRepository participantRepository,
             UserRepository userRepository,
-            NotificationService notificationService) {
+            NotificationService notificationService,
+            com.jobportal.config.JwtProvider jwtProvider) {
         this.chatService          = chatService;
         this.chatMapper           = chatMapper;
         this.messagingTemplate    = messagingTemplate;
         this.participantRepository = participantRepository;
         this.userRepository        = userRepository;
         this.notificationService   = notificationService;
+        this.jwtProvider          = jwtProvider;
     }
 
     // ── Send Message ─────────────────────────────────────────────────────
@@ -104,12 +107,34 @@ public class ChatWebSocketController {
             Principal principal,
             SimpMessageHeaderAccessor headerAccessor) throws JobPortalException {
 
-        if (principal == null) {
-            log.warn("sendMessage rejected: unauthenticated WebSocket session");
+        String senderEmail = (principal != null) ? principal.getName() : null;
+
+        // Fallback 1: Extract from session attributes populated by HandshakeInterceptor
+        if (senderEmail == null && headerAccessor != null && headerAccessor.getSessionAttributes() != null) {
+            Object attr = headerAccessor.getSessionAttributes().get("authenticatedEmail");
+            if (attr instanceof String s && !s.isBlank()) {
+                senderEmail = s;
+            }
+        }
+
+        // Fallback 2: Extract from native Authorization header
+        if (senderEmail == null && headerAccessor != null) {
+            String authHeader = headerAccessor.getFirstNativeHeader("Authorization");
+            if (authHeader != null && authHeader.startsWith("Bearer ")) {
+                try {
+                    senderEmail = jwtProvider.getEmailFromToken(authHeader.substring(7));
+                } catch (Exception ignored) {
+                    // invalid header token
+                }
+            }
+        }
+
+        if (senderEmail == null) {
+            log.warn("sendMessage rejected: unauthenticated WebSocket session for convId={}",
+                request != null ? request.getConversationId() : null);
             return;
         }
 
-        String senderEmail = principal.getName();
         Long convId = request.getConversationId();
 
         // Validate and save

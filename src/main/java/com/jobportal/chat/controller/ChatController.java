@@ -25,6 +25,13 @@ import com.jobportal.chat.service.ChatService;
 import com.jobportal.dto.response.ApiResponse;
 import com.jobportal.exception.JobPortalException;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+import com.jobportal.chat.dto.request.SendMessageRequest;
+import com.jobportal.chat.entity.Message;
+import com.jobportal.chat.mapper.ChatMapper;
+
 import jakarta.validation.Valid;
 
 /**
@@ -35,6 +42,7 @@ import jakarta.validation.Valid;
  *   GET    /api/chat/conversations               - list my conversations
  *   GET    /api/chat/conversations/{id}          - get one conversation
  *   GET    /api/chat/conversations/{id}/messages - paginated messages (newest first)
+ *   POST   /api/chat/conversations/{id}/messages - send a message via REST (with WebSocket broadcast)
  *   PATCH  /api/chat/conversations/{id}/read     - mark messages as read
  *   GET    /api/chat/unread-count                - total unread badge count
  *   DELETE /api/chat/conversations/{id}/messages/{msgId} - soft-delete a message
@@ -46,10 +54,19 @@ import jakarta.validation.Valid;
 @RequestMapping("/api/chat")
 public class ChatController {
 
-    private final ChatService chatService;
+    private static final Logger log = LoggerFactory.getLogger(ChatController.class);
 
-    public ChatController(ChatService chatService) {
-        this.chatService = chatService;
+    private final ChatService chatService;
+    private final ChatMapper chatMapper;
+    private final SimpMessagingTemplate messagingTemplate;
+
+    public ChatController(
+            ChatService chatService,
+            ChatMapper chatMapper,
+            SimpMessagingTemplate messagingTemplate) {
+        this.chatService       = chatService;
+        this.chatMapper        = chatMapper;
+        this.messagingTemplate = messagingTemplate;
     }
 
     // ── Create / Get Conversation ────────────────────────────────────────
@@ -113,6 +130,31 @@ public class ChatController {
             Authentication authentication) throws JobPortalException {
         Page<MessageResponse> messages = chatService.getMessages(id, authentication.getName(), pageable);
         return ResponseEntity.ok(ApiResponse.success(messages));
+    }
+
+    /**
+     * Send a message to a conversation via REST API.
+     * Persists message to database and broadcasts over STOMP to /topic/conversations/{id}.
+     * Provides a 100% reliable fallback when WebSocket is connecting, dropped, or blocked.
+     */
+    @PostMapping("/conversations/{id}/messages")
+    public ResponseEntity<ApiResponse<MessageResponse>> sendMessage(
+            @PathVariable Long id,
+            @Valid @RequestBody SendMessageRequest request,
+            Authentication authentication) throws JobPortalException {
+        String senderEmail = authentication.getName();
+        Message savedMessage = chatService.saveMessage(id, request.getContent(), senderEmail);
+        MessageResponse response = chatMapper.toMessageResponse(savedMessage);
+
+        try {
+            messagingTemplate.convertAndSend("/topic/conversations/" + id, response);
+            log.debug("Message id=[{}] broadcasted via STOMP to /topic/conversations/[{}]", savedMessage.getId(), id);
+        } catch (Exception e) {
+            log.warn("STOMP broadcast notice for message {}: {}", savedMessage.getId(), e.getMessage());
+        }
+
+        return ResponseEntity.status(HttpStatus.CREATED)
+            .body(ApiResponse.success("Message sent.", response));
     }
 
     // ── Mark as Read ─────────────────────────────────────────────────────

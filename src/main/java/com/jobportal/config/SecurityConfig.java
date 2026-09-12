@@ -150,8 +150,8 @@ public class SecurityConfig {
                 // ── AI Career Copilot (Public & Authenticated) ──
                 .requestMatchers("/api/ai/copilot/**").permitAll()
 
-                // ── WebSocket Handshake (STOMP over SockJS) ──
-                .requestMatchers("/ws/**", "/api/ws/**").permitAll()
+                // ── WebSocket Handshake (Native WS and SockJS) ──
+                .requestMatchers("/ws", "/ws/**", "/api/ws", "/api/ws/**").permitAll()
 
                 // ── Swagger / OpenAPI ──
                 .requestMatchers(
@@ -159,6 +159,9 @@ public class SecurityConfig {
                         "/swagger-ui/**",
                         "/swagger-ui.html"
                 ).permitAll()
+
+                // ── Chat APIs — authenticated ──
+                .requestMatchers("/api/chat/**").authenticated()
 
                 // ── Recruiter APIs — authenticated ──
                 .requestMatchers("/api/recruiter/**").authenticated()

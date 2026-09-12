@@ -58,16 +58,16 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
                 .filter(s -> !s.isEmpty())
                 .toArray(String[]::new);
 
-        // SockJS fallback endpoint (handles /ws and /api/ws)
-        registry.addEndpoint("/ws", "/api/ws")
-            .setAllowedOriginPatterns(origins)
-            .addInterceptors(cookieHandshakeInterceptor)
-            .withSockJS();
-
-        // Native WebSocket endpoint
+        // Native WebSocket endpoint (used by modern STOMP client with wss://)
         registry.addEndpoint("/ws", "/api/ws")
             .setAllowedOriginPatterns(origins)
             .addInterceptors(cookieHandshakeInterceptor);
+
+        // SockJS fallback endpoint (available for legacy fallback)
+        registry.addEndpoint("/ws-sockjs", "/api/ws-sockjs")
+            .setAllowedOriginPatterns(origins)
+            .addInterceptors(cookieHandshakeInterceptor)
+            .withSockJS();
     }
 
     @Override
