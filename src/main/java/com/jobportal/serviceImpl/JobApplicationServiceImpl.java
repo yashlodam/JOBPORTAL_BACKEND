@@ -210,8 +210,8 @@ public class JobApplicationServiceImpl implements JobApplicationService {
                                                             String email,
                                                             Pageable pageable)
             throws JobPortalException {
-        // ── SECURITY GATE: only APPROVED recruiters can view job applications ──
-        Recruiter recruiter = recruiterAuthorizationService.requireApprovedRecruiter(email);
+        // ── SECURITY GATE: approved or pending recruiters can view job applications for their jobs ──
+        Recruiter recruiter = recruiterAuthorizationService.requireApprovedOrPendingRecruiter(email);
 
         Job job = jobRepository.findById(jobId)
                 .orElseThrow(() -> JobPortalException.notFound("Job not found."));
@@ -224,6 +224,16 @@ public class JobApplicationServiceImpl implements JobApplicationService {
         return applicationRepository.findByJobId(jobId, pageable).map(this::toResponse);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Page<JobApplicationResponse> getAllRecruiterApplications(String email, Pageable pageable)
+            throws JobPortalException {
+        // ── SECURITY GATE: approved or pending recruiters can view all applications for their jobs ──
+        Recruiter recruiter = recruiterAuthorizationService.requireApprovedOrPendingRecruiter(email);
+        return applicationRepository.findByJobRecruiterId(recruiter.getId(), pageable)
+                .map(this::toResponse);
+    }
+
     // ── Status Update ─────────────────────────────────────────────────────────
 
     @Override
@@ -232,8 +242,8 @@ public class JobApplicationServiceImpl implements JobApplicationService {
                                                            UpdateApplicationStatusRequest request,
                                                            String email)
             throws JobPortalException {
-        // ── SECURITY GATE: only APPROVED recruiters can update application status ──
-        Recruiter recruiter = recruiterAuthorizationService.requireApprovedRecruiter(email);
+        // ── SECURITY GATE: approved or pending recruiters can update application status ──
+        Recruiter recruiter = recruiterAuthorizationService.requireApprovedOrPendingRecruiter(email);
 
         JobApplication application = findApplicationById(applicationId);
 

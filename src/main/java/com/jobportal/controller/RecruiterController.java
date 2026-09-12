@@ -227,6 +227,18 @@ public class RecruiterController {
     }
 
     /**
+     * Get all applications submitted across all jobs belonging to the authenticated recruiter.
+     */
+    @GetMapping("/applications")
+    public ResponseEntity<ApiResponse<Page<JobApplicationResponse>>> getAllApplications(
+            Authentication authentication,
+            @PageableDefault(size = 20, sort = "createdAt") Pageable pageable)
+            throws JobPortalException {
+        return ResponseEntity.ok(ApiResponse.success(
+                jobApplicationService.getAllRecruiterApplications(authentication.getName(), pageable)));
+    }
+
+    /**
      * Update the status of an application (e.g., UNDER_REVIEW → INTERVIEW → ACCEPTED).
      * Only the recruiter who owns the job may update application status.
      * Triggers a notification to the applicant via event listener.

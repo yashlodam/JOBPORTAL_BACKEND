@@ -32,6 +32,7 @@ public class JobMatchServiceImpl implements JobMatchService {
     private final RecruiterRepository recruiterRepository;
     private final UserRepository userRepository;
     private final JobMatchOrchestratorService orchestratorService;
+    private final com.jobportal.service.RecruiterAuthorizationService recruiterAuthorizationService;
 
     public JobMatchServiceImpl(
             JobMatchAnalysisRepository matchRepository,
@@ -39,13 +40,15 @@ public class JobMatchServiceImpl implements JobMatchService {
             JobRepository jobRepository,
             RecruiterRepository recruiterRepository,
             UserRepository userRepository,
-            JobMatchOrchestratorService orchestratorService) {
+            JobMatchOrchestratorService orchestratorService,
+            com.jobportal.service.RecruiterAuthorizationService recruiterAuthorizationService) {
         this.matchRepository = matchRepository;
         this.applicationRepository = applicationRepository;
         this.jobRepository = jobRepository;
         this.recruiterRepository = recruiterRepository;
         this.userRepository = userRepository;
         this.orchestratorService = orchestratorService;
+        this.recruiterAuthorizationService = recruiterAuthorizationService;
     }
 
     @Override
@@ -103,14 +106,17 @@ public class JobMatchServiceImpl implements JobMatchService {
         return matchRepository.findCandidatesByJobIdAndRecruiterId(jobId, recruiter.getId(), pageable);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Page<CandidateMatchSummaryDTO> getAllCandidateMatchesForRecruiter(String recruiterEmail, Pageable pageable) throws JobPortalException {
+        Recruiter recruiter = findRecruiterByEmail(recruiterEmail);
+        return matchRepository.findAllCandidatesByRecruiterId(recruiter.getId(), pageable);
+    }
+
     // ── Helper Methods ────────────────────────────────────────────────────────
 
     private Recruiter findRecruiterByEmail(String email) throws JobPortalException {
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> JobPortalException.notFound("User not found: " + email));
-
-        return recruiterRepository.findByUser(user)
-                .orElseThrow(() -> JobPortalException.forbidden("Only registered recruiters can access candidate match scores."));
+        return recruiterAuthorizationService.requireApprovedOrPendingRecruiter(email);
     }
 
     private JobMatchResponse toResponse(JobMatchAnalysis entity) {

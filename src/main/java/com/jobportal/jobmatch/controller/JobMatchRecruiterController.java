@@ -67,4 +67,16 @@ public class JobMatchRecruiterController {
         Page<CandidateMatchSummaryDTO> page = jobMatchService.getCandidateMatchesForJob(jobId, authentication.getName(), pageable);
         return ResponseEntity.ok(ApiResponse.success("Candidates fetched successfully", page));
     }
+
+    /**
+     * Get paged candidate list across ALL jobs posted by the recruiter with match percentages.
+     */
+    @GetMapping("/candidates-with-match")
+    public ResponseEntity<ApiResponse<Page<CandidateMatchSummaryDTO>>> getAllCandidatesWithMatch(
+            @PageableDefault(size = 20, sort = "app.createdAt", direction = Sort.Direction.DESC) Pageable pageable,
+            Authentication authentication) throws JobPortalException {
+
+        Page<CandidateMatchSummaryDTO> page = jobMatchService.getAllCandidateMatchesForRecruiter(authentication.getName(), pageable);
+        return ResponseEntity.ok(ApiResponse.success("All candidate matches fetched successfully", page));
+    }
 }

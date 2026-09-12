@@ -17,4 +17,7 @@ public interface JobMatchService {
 
     /** Returns paged candidate applications with match percentage and status for a recruiter's job. */
     Page<CandidateMatchSummaryDTO> getCandidateMatchesForJob(Long jobId, String recruiterEmail, Pageable pageable) throws JobPortalException;
+
+    /** Returns paged candidate applications with match percentage across ALL jobs for a recruiter. */
+    Page<CandidateMatchSummaryDTO> getAllCandidateMatchesForRecruiter(String recruiterEmail, Pageable pageable) throws JobPortalException;
 }

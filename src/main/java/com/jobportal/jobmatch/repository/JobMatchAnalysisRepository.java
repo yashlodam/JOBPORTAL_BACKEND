@@ -57,6 +57,34 @@ public interface JobMatchAnalysisRepository extends JpaRepository<JobMatchAnalys
             @Param("recruiterId") Long recruiterId,
             Pageable pageable);
 
+    /**
+     * Optimized candidate listing across ALL jobs for a recruiter with match percentage.
+     */
+    @Query("""
+        SELECT new com.jobportal.jobmatch.dto.CandidateMatchSummaryDTO(
+            app.id,
+            j.id,
+            j.jobTitle,
+            applicant.id,
+            applicant.name,
+            applicant.email,
+            app.status,
+            r.resumeUrl,
+            COALESCE(ma.matchPercentage, 0),
+            COALESCE(ma.status, com.jobportal.jobmatch.enums.MatchStatus.PENDING),
+            app.createdAt
+        )
+        FROM JobApplication app
+        JOIN app.job j
+        JOIN app.applicant applicant
+        LEFT JOIN app.resume r
+        LEFT JOIN JobMatchAnalysis ma ON ma.jobApplication.id = app.id
+        WHERE j.recruiter.id = :recruiterId
+    """)
+    Page<CandidateMatchSummaryDTO> findAllCandidatesByRecruiterId(
+            @Param("recruiterId") Long recruiterId,
+            Pageable pageable);
+
     /** Check if match analysis exists for an application. */
     boolean existsByJobApplicationId(Long jobApplicationId);
 

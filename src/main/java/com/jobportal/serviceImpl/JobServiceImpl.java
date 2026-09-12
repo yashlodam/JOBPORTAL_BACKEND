@@ -131,10 +131,8 @@ public class JobServiceImpl implements JobService {
     @Override
     @Transactional
     public JobDetailResponse createJob(JobRequest dto, String email) throws JobPortalException {
-        // ── SECURITY GATE: only APPROVED recruiters can post jobs ─────────────
-        // requireApprovedRecruiter() throws 403 for PENDING, REJECTED, SUSPENDED
-        // with a status-specific actionable message.
-        Recruiter recruiter = recruiterAuthorizationService.requireApprovedRecruiter(email);
+        // ── SECURITY GATE: approved or pending recruiters can post jobs ─────────────
+        Recruiter recruiter = recruiterAuthorizationService.requireApprovedOrPendingRecruiter(email);
         User user = recruiter.getUser();
 
         if (recruiter.getCompany() == null) {
@@ -169,8 +167,8 @@ public class JobServiceImpl implements JobService {
     @Transactional
     public JobDetailResponse updateJob(Long jobId, JobRequest dto, String email)
             throws JobPortalException {
-        // ── SECURITY GATE: only APPROVED recruiters can update jobs ───────────
-        Recruiter recruiter = recruiterAuthorizationService.requireApprovedRecruiter(email);
+        // ── SECURITY GATE: approved or pending recruiters can update their jobs ───
+        Recruiter recruiter = recruiterAuthorizationService.requireApprovedOrPendingRecruiter(email);
         User user = recruiter.getUser();
 
         // Use findByIdWithDetails: loads company + recruiter + recruiter.user
@@ -192,8 +190,8 @@ public class JobServiceImpl implements JobService {
     @Override
     @Transactional
     public void deleteJob(Long jobId, String email) throws JobPortalException {
-        // ── SECURITY GATE: only APPROVED recruiters can delete jobs ───────────
-        Recruiter recruiter = recruiterAuthorizationService.requireApprovedRecruiter(email);
+        // ── SECURITY GATE: approved or pending recruiters can delete their jobs ───
+        Recruiter recruiter = recruiterAuthorizationService.requireApprovedOrPendingRecruiter(email);
 
         Job job = jobRepository.findByIdWithDetails(jobId)
                 .orElseThrow(() -> JobPortalException.notFound("Job not found with id: " + jobId));

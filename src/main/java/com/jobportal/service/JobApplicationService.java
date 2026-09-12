@@ -21,6 +21,9 @@ public interface JobApplicationService {
     Page<JobApplicationResponse> getJobApplications(Long jobId, String email, Pageable pageable)
             throws JobPortalException;
 
+    Page<JobApplicationResponse> getAllRecruiterApplications(String email, Pageable pageable)
+            throws JobPortalException;
+
     JobApplicationResponse updateApplicationStatus(Long applicationId,
             UpdateApplicationStatusRequest request, String email) throws JobPortalException;
 }
