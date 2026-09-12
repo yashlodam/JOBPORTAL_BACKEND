@@ -44,7 +44,7 @@ USER appuser
 ENV PORT=8080 \
     SPRING_PROFILES_ACTIVE=prod \
     FILE_UPLOAD_DIR=/app/uploads \
-    JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=50.0 -XX:InitialRAMPercentage=25.0 -XX:MaxMetaspaceSize=128m -XX:ReservedCodeCacheSize=48m -Xss512k -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError"
+    JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=38.0 -XX:InitialRAMPercentage=15.0 -XX:MaxMetaspaceSize=192m -XX:CompressedClassSpaceSize=48m -XX:ReservedCodeCacheSize=32m -Xss384k -XX:+UseSerialGC -XX:+ExitOnOutOfMemoryError"
 
 EXPOSE 8080
 
