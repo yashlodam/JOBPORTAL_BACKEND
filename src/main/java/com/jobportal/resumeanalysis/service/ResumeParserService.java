@@ -38,6 +38,8 @@ public class ResumeParserService {
     private static final Logger log = LoggerFactory.getLogger(ResumeParserService.class);
 
     private static final int MIN_TEXT_LENGTH = 50;
+    private static final int MAX_EXTRACTED_CHARS = 30_000;
+    private static final int MAX_RESUME_PAGES = 10;
 
     @Value("${file.upload.base-dir}")
     private String uploadBaseDir;
@@ -76,11 +78,8 @@ public class ResumeParserService {
                         "Unsupported resume format: " + contentType + ". Please upload a PDF or DOCX file.");
             };
 
-            log.info("\n==================== EXTRACTED RESUME TEXT ====================\n" +
-                     "File: {}\nFormat: {}\nChar Count: {}\n---------------------------------------------------------------\n" +
-                     "{}\n" +
-                     "===============================================================",
-                     resume.getFileName(), contentType, extractedText.length(), extractedText);
+            log.info("Extracted {} characters from resume [{}] (format: {})",
+                    extractedText.length(), resume.getFileName(), contentType);
 
             return extractedText;
         } catch (JobPortalException e) {
@@ -131,12 +130,17 @@ public class ResumeParserService {
         try (PDDocument document = Loader.loadPDF(file)) {
             PDFTextStripper stripper = new PDFTextStripper();
             stripper.setSortByPosition(true);
+            stripper.setStartPage(1);
+            stripper.setEndPage(MAX_RESUME_PAGES);
             String text = stripper.getText(document);
             if (text == null || text.trim().length() < MIN_TEXT_LENGTH) {
                 throw JobPortalException.badRequest(
                         "The PDF appears to be image-based or empty. Please upload a text-selectable PDF.");
             }
-            return text.trim();
+            String trimmed = text.trim();
+            return trimmed.length() > MAX_EXTRACTED_CHARS
+                    ? trimmed.substring(0, MAX_EXTRACTED_CHARS)
+                    : trimmed;
         }
     }
 
@@ -149,7 +153,10 @@ public class ResumeParserService {
                 throw JobPortalException.badRequest(
                         "The DOCX file appears to be empty or unreadable.");
             }
-            return text.trim();
+            String trimmed = text.trim();
+            return trimmed.length() > MAX_EXTRACTED_CHARS
+                    ? trimmed.substring(0, MAX_EXTRACTED_CHARS)
+                    : trimmed;
         }
     }
 

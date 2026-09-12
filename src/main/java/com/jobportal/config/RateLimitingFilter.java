@@ -101,7 +101,7 @@ public class RateLimitingFilter extends OncePerRequestFilter {
                 return;
             }
 
-            if (requestCounts.size() > 5000) {
+            if (requestCounts.size() > 200) {
                 cleanupStaleEntries(currentEpochMinute);
             }
         }

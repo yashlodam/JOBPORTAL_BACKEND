@@ -24,7 +24,21 @@ public class HealthController {
         response.put("status", "UP");
         response.put("timestamp", Instant.now().toString());
         response.put("uptime", (Instant.now().toEpochMilli() - startTime.toEpochMilli()) / 1000 + "s");
-        response.put("docs", "/swagger-ui.html");
+
+        // Safe JVM memory observability (heap metrics in MB, no secrets)
+        Runtime runtime = Runtime.getRuntime();
+        long totalMemory = runtime.totalMemory();
+        long freeMemory = runtime.freeMemory();
+        long maxMemory = runtime.maxMemory();
+        long usedMemory = totalMemory - freeMemory;
+
+        Map<String, Object> memory = new HashMap<>();
+        memory.put("usedMb", usedMemory / (1024 * 1024));
+        memory.put("freeMb", freeMemory / (1024 * 1024));
+        memory.put("totalMb", totalMemory / (1024 * 1024));
+        memory.put("maxMb", maxMemory / (1024 * 1024));
+        response.put("memory", memory);
+
         return ResponseEntity.ok(response);
     }
 }

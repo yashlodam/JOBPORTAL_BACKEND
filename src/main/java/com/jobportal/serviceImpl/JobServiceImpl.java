@@ -9,6 +9,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -368,7 +369,12 @@ public class JobServiceImpl implements JobService {
         if (isRelevanceSort) {
             final String finalKeyword = request.getKeyword();
             JobSearchEngineService.SearchIntent intent = jobSearchEngineService.parseQuery(finalKeyword);
-            List<Job> allMatches = new ArrayList<>(jobRepository.findAll(specification));
+
+            // Bounded candidate pool for Render Free memory safety (max 100 recent matching jobs)
+            Pageable candidatePool = PageRequest.of(0, 100, Sort.by(Sort.Direction.DESC, "createdAt"));
+            Page<Job> poolPage = jobRepository.findAll(specification, candidatePool);
+            List<Job> allMatches = new ArrayList<>(poolPage.getContent());
+
             allMatches.sort((a, b) -> {
                 double scoreB = jobSearchEngineService.calculateRelevanceScore(b, finalKeyword, intent.getTokens(), intent.getSynonyms());
                 double scoreA = jobSearchEngineService.calculateRelevanceScore(a, finalKeyword, intent.getTokens(), intent.getSynonyms());
@@ -385,7 +391,7 @@ public class JobServiceImpl implements JobService {
             List<JobSummaryResponse> pagedList = start < allMatches.size()
                     ? allMatches.subList(start, end).stream().map(jobMapper::toSummary).toList()
                     : Collections.emptyList();
-            return new PageImpl<>(pagedList, pageable, allMatches.size());
+            return new PageImpl<>(pagedList, pageable, poolPage.getTotalElements());
         }
 
         return jobRepository.findAll(specification, pageable).map(jobMapper::toSummary);

@@ -31,3 +31,9 @@ scratch/
 # Runtime uploads & logs
 uploads/
 *.log
+*.tmp
+*.pdf
+*.docx
+.DS_Store
+Thumbs.db
+.gemini/

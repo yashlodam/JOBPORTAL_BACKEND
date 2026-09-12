@@ -4,14 +4,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
 /**
  * Startup schema cleaner that dynamically drops all obsolete legacy collection tables
  * matching resume_analysis_* with CASCADE (which were replaced by StringListConverter JSON columns).
+ * Disabled by default in production to eliminate startup overhead.
  */
 @Component
+@ConditionalOnProperty(name = "app.schema.cleaner.enabled", havingValue = "true", matchIfMissing = false)
 public class DatabaseSchemaCleaner implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(DatabaseSchemaCleaner.class);

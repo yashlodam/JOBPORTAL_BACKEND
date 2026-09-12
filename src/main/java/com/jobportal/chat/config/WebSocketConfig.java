@@ -10,6 +10,7 @@ import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
 import org.springframework.web.socket.config.annotation.WebSocketMessageBrokerConfigurer;
+import org.springframework.web.socket.config.annotation.WebSocketTransportRegistration;
 
 /**
  * STOMP WebSocket configuration.
@@ -67,6 +68,15 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
         registry.addEndpoint("/ws", "/api/ws")
             .setAllowedOriginPatterns(origins)
             .addInterceptors(cookieHandshakeInterceptor);
+    }
+
+    @Override
+    public void configureWebSocketTransport(WebSocketTransportRegistration registration) {
+        registration
+            .setMessageSizeLimit(64 * 1024)       // 64 KB max message payload
+            .setSendBufferSizeLimit(256 * 1024)   // 256 KB send buffer per session
+            .setSendTimeLimit(15 * 1000)          // 15 seconds send timeout
+            .setTimeToFirstMessage(30 * 1000);    // 30 seconds connection idle grace
     }
 
     @Override

@@ -67,11 +67,7 @@ public class AiResumeAnalyzerService {
                 ? resumeText.substring(0, MAX_RESUME_CHARS)
                 : resumeText;
 
-        log.info("\n==================== SENDING TEXT TO AI ====================\n" +
-                 "Char Count: {}\n---------------------------------------------------------------\n" +
-                 "{}\n" +
-                 "===============================================================",
-                 truncated.length(), truncated);
+        log.info("Sending resume analysis request (char count: {}) to AI model", truncated.length());
 
         AiAnalysisResult result = null;
 

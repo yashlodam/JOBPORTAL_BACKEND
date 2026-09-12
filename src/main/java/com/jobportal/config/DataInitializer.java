@@ -83,6 +83,9 @@ public class DataInitializer implements ApplicationRunner {
     @Value("${app.admin.bootstrap.name:Platform Admin}")
     private String adminName;
 
+    @Value("${app.migration.fix-foreign-keys.enabled:false}")
+    private boolean fixForeignKeysEnabled;
+
     public DataInitializer(
             JdbcTemplate jdbcTemplate,
             UserRepository userRepository,
@@ -123,36 +126,33 @@ public class DataInitializer implements ApplicationRunner {
     private void migrateRecruiterStatuses() {
         log.info("[DataInitializer] Starting recruiter status migration...");
 
-        // ── Drop legacy PostgreSQL CHECK constraints if present ───────────────
-        // Hibernate's ddl-auto=update does NOT drop or alter existing check constraints
-        // on PostgreSQL when enum constants change. We safely drop them here via JDBC.
-        try {
-            jdbcTemplate.execute("ALTER TABLE recruiters DROP CONSTRAINT IF EXISTS recruiters_status_check");
-            jdbcTemplate.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_account_type_check");
-            jdbcTemplate.execute("ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check");
-            jdbcTemplate.execute("ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_priority_check");
-            jdbcTemplate.execute("ALTER TABLE job_applications DROP CONSTRAINT IF EXISTS job_applications_status_check");
-        } catch (Exception e) {
-            log.warn("[DataInitializer] CHECK constraint migration notice: {}", e.getMessage());
+        // ── Drop legacy PostgreSQL CHECK constraints & fix FKs only if explicitly enabled ───
+        if (fixForeignKeysEnabled) {
+            try {
+                jdbcTemplate.execute("ALTER TABLE recruiters DROP CONSTRAINT IF EXISTS recruiters_status_check");
+                jdbcTemplate.execute("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_account_type_check");
+                jdbcTemplate.execute("ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_type_check");
+                jdbcTemplate.execute("ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_priority_check");
+                jdbcTemplate.execute("ALTER TABLE job_applications DROP CONSTRAINT IF EXISTS job_applications_status_check");
+            } catch (Exception e) {
+                log.warn("[DataInitializer] CHECK constraint migration notice: {}", e.getMessage());
+            }
+
+            fixForeignKey("saved_jobs", "fkawvc9t3d3efu6ta6h30tb984t",
+                    "ALTER TABLE saved_jobs ADD CONSTRAINT fkawvc9t3d3efu6ta6h30tb984t FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE");
+
+            fixForeignKey("job_applications", "fk6s1ob9k4ihi75r0ax7aiik1me",
+                    "ALTER TABLE job_applications ADD CONSTRAINT fk6s1ob9k4ihi75r0ax7aiik1me FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE");
+
+            fixForeignKey("conversations", "fknx01kvyeuyp7tpgl2li76kwf0",
+                    "ALTER TABLE conversations ADD CONSTRAINT fknx01kvyeuyp7tpgl2li76kwf0 FOREIGN KEY (job_application_id) REFERENCES job_applications(id) ON DELETE SET NULL");
+
+            fixForeignKey("job_match_analyses", "fk99j8aw6or7928efa0flwfqv5p",
+                    "ALTER TABLE job_match_analyses ADD CONSTRAINT fk99j8aw6or7928efa0flwfqv5p FOREIGN KEY (job_application_id) REFERENCES job_applications(id) ON DELETE CASCADE");
+
+            fixForeignKey("notifications", "fkb0yp7ero2lbxv47mryf43wptb",
+                    "ALTER TABLE notifications ADD CONSTRAINT fkb0yp7ero2lbxv47mryf43wptb FOREIGN KEY (recipient_id) REFERENCES users(id) ON DELETE CASCADE");
         }
-
-        // ── Fix FK constraints: ensure proper ON DELETE behaviour ─────────────
-        // Hibernate generates FK constraints without ON DELETE CASCADE/SET NULL.
-        // These block cascading deletes. We fix them here with idempotent DROP/ADD.
-        fixForeignKey("saved_jobs", "fkawvc9t3d3efu6ta6h30tb984t",
-                "ALTER TABLE saved_jobs ADD CONSTRAINT fkawvc9t3d3efu6ta6h30tb984t FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE");
-
-        fixForeignKey("job_applications", "fk6s1ob9k4ihi75r0ax7aiik1me",
-                "ALTER TABLE job_applications ADD CONSTRAINT fk6s1ob9k4ihi75r0ax7aiik1me FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE");
-
-        fixForeignKey("conversations", "fknx01kvyeuyp7tpgl2li76kwf0",
-                "ALTER TABLE conversations ADD CONSTRAINT fknx01kvyeuyp7tpgl2li76kwf0 FOREIGN KEY (job_application_id) REFERENCES job_applications(id) ON DELETE SET NULL");
-
-        fixForeignKey("job_match_analyses", "fk99j8aw6or7928efa0flwfqv5p",
-                "ALTER TABLE job_match_analyses ADD CONSTRAINT fk99j8aw6or7928efa0flwfqv5p FOREIGN KEY (job_application_id) REFERENCES job_applications(id) ON DELETE CASCADE");
-
-        fixForeignKey("notifications", "fkb0yp7ero2lbxv47mryf43wptb",
-                "ALTER TABLE notifications ADD CONSTRAINT fkb0yp7ero2lbxv47mryf43wptb FOREIGN KEY (recipient_id) REFERENCES users(id) ON DELETE CASCADE");
 
         // ACTIVE → APPROVED: grandfather all existing recruiters as verified
         int approvedCount = jdbcTemplate.update(
