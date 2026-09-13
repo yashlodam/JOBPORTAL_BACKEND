@@ -11,6 +11,7 @@ public class ReadReceiptResponse {
     private Long conversationId;
     private Long userId;
     private String userName;
+    @com.fasterxml.jackson.annotation.JsonFormat(shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")
     private LocalDateTime readAt;
 
     public ReadReceiptResponse() {}
