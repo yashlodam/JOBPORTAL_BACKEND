@@ -62,46 +62,29 @@ public class ChatWebSocketController {
     private static final Logger log = LoggerFactory.getLogger(ChatWebSocketController.class);
 
     private final ChatService chatService;
-    private final ChatMapper chatMapper;
     private final SimpMessagingTemplate messagingTemplate;
-    private final ConversationParticipantRepository participantRepository;
     private final UserRepository userRepository;
-    private final NotificationService notificationService;
     private final com.jobportal.config.JwtProvider jwtProvider;
 
     public ChatWebSocketController(
             ChatService chatService,
-            ChatMapper chatMapper,
             SimpMessagingTemplate messagingTemplate,
-            ConversationParticipantRepository participantRepository,
             UserRepository userRepository,
-            NotificationService notificationService,
             com.jobportal.config.JwtProvider jwtProvider) {
-        this.chatService          = chatService;
-        this.chatMapper           = chatMapper;
-        this.messagingTemplate    = messagingTemplate;
-        this.participantRepository = participantRepository;
-        this.userRepository        = userRepository;
-        this.notificationService   = notificationService;
-        this.jwtProvider          = jwtProvider;
+        this.chatService       = chatService;
+        this.messagingTemplate = messagingTemplate;
+        this.userRepository    = userRepository;
+        this.jwtProvider       = jwtProvider;
     }
 
     // ── Send Message ─────────────────────────────────────────────────────
 
     /**
      * Handle a send-message request from a WebSocket client.
-     *
-     * Flow:
-     *   1. Validate sender is a participant of the conversation.
-     *   2. Persist the message via ChatService.saveMessage().
-     *   3. Build MessageResponse and broadcast to /topic/conversations/{id}.
-     *   4. Send MESSAGE_RECEIVED notification to each offline participant.
-     *
-     * Client subscribes to: /topic/conversations/{conversationId}
-     * to receive the broadcast message.
+     * Persists message, sends notifications to offline participants,
+     * and broadcasts MessageResponse over STOMP to /topic/conversations/{convId}.
      */
     @MessageMapping("/chat.send")
-    @Transactional
     public void sendMessage(
             @Payload SendMessageRequest request,
             Principal principal,
@@ -137,9 +120,8 @@ public class ChatWebSocketController {
 
         Long convId = request.getConversationId();
 
-        // Validate and save
-        Message savedMessage = chatService.saveMessage(convId, request.getContent(), senderEmail);
-        MessageResponse response = chatMapper.toMessageResponse(savedMessage);
+        // Validate, save, notify offline participants, and map to response
+        MessageResponse response = chatService.sendMessage(convId, request.getContent(), senderEmail);
 
         // Broadcast to all subscribers of this conversation
         messagingTemplate.convertAndSend(
@@ -147,10 +129,7 @@ public class ChatWebSocketController {
             response
         );
         log.debug("Message id=[{}] broadcast to /topic/conversations/[{}]",
-            savedMessage.getId(), convId);
-
-        // Notify offline participants
-        notifyOfflineParticipants(savedMessage, convId, senderEmail);
+            response.getId(), convId);
     }
 
     // ── Typing Indicator ─────────────────────────────────────────────────
@@ -250,47 +229,5 @@ public class ChatWebSocketController {
             if (status == 400) return WebSocketErrorResponse.invalidPayload(jpe.getMessage());
         }
         return WebSocketErrorResponse.serverError();
-    }
-
-    // ── Private helpers ──────────────────────────────────────────────────
-
-    /**
-     * Send MESSAGE_RECEIVED in-app notifications to participants who are
-     * currently OFFLINE. Online participants receive the message via WebSocket.
-     *
-     * Design: only notify offline users to avoid double-alert for users
-     * who are actively in the conversation.
-     */
-    private void notifyOfflineParticipants(Message message, Long convId, String senderEmail) {
-        try {
-            participantRepository.findAllByConversationId(convId).stream()
-                .filter(cp -> !cp.getUser().getEmail().equals(senderEmail))
-                .filter(cp -> !cp.isOnline())
-                .forEach(cp -> {
-                    User recipient = cp.getUser();
-                    User sender = message.getSender();
-                    notificationService.send(
-                        recipient,
-                        NotificationType.MESSAGE_RECEIVED,
-                        NotificationPriority.HIGH,
-                        "New message from " + sender.getName(),
-                        truncate(message.getContent(), 100),
-                        "/messages/" + convId,
-                        message.getId(),
-                        "MESSAGE"
-                    );
-                    log.debug("MESSAGE_RECEIVED notification sent to [{}] for conv [{}]",
-                        recipient.getEmail(), convId);
-                });
-        } catch (Exception ex) {
-            // Notification failure must never fail the message delivery
-            log.error("Failed to send message notifications for conv [{}]: {}",
-                convId, ex.getMessage(), ex);
-        }
-    }
-
-    private String truncate(String text, int maxLen) {
-        if (text == null) return "";
-        return text.length() <= maxLen ? text : text.substring(0, maxLen - 3) + "...";
     }
 }

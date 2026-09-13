@@ -169,7 +169,10 @@ public class SecurityConfig {
                 .requestMatchers("/api/ai/copilot/**").permitAll()
 
                 // ── WebSocket Handshake (Native WS and SockJS) ──
-                .requestMatchers("/ws", "/ws/**", "/api/ws", "/api/ws/**").permitAll()
+                .requestMatchers(
+                        "/ws", "/ws/**", "/api/ws", "/api/ws/**",
+                        "/ws-sockjs", "/ws-sockjs/**", "/api/ws-sockjs", "/api/ws-sockjs/**"
+                ).permitAll()
 
                 // ── Swagger / OpenAPI ──
                 .requestMatchers(

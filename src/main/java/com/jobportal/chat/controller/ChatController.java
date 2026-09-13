@@ -143,14 +143,13 @@ public class ChatController {
             @Valid @RequestBody SendMessageRequest request,
             Authentication authentication) throws JobPortalException {
         String senderEmail = authentication.getName();
-        Message savedMessage = chatService.saveMessage(id, request.getContent(), senderEmail);
-        MessageResponse response = chatMapper.toMessageResponse(savedMessage);
+        MessageResponse response = chatService.sendMessage(id, request.getContent(), senderEmail);
 
         try {
             messagingTemplate.convertAndSend("/topic/conversations/" + id, response);
-            log.debug("Message id=[{}] broadcasted via STOMP to /topic/conversations/[{}]", savedMessage.getId(), id);
+            log.debug("Message id=[{}] broadcasted via STOMP to /topic/conversations/[{}]", response.getId(), id);
         } catch (Exception e) {
-            log.warn("STOMP broadcast notice for message {}: {}", savedMessage.getId(), e.getMessage());
+            log.warn("STOMP broadcast notice for message {}: {}", response.getId(), e.getMessage());
         }
 
         return ResponseEntity.status(HttpStatus.CREATED)

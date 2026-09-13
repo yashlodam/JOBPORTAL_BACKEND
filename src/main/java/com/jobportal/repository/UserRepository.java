@@ -16,6 +16,9 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByEmail(String email);
 
+    @Query("SELECT u FROM User u LEFT JOIN FETCH u.profile WHERE u.email = :email")
+    Optional<User> findByEmailWithProfile(@Param("email") String email);
+
     Optional<User> findByProfileId(Long profileId);
 
     long countByAccountType(AccountType accountType);

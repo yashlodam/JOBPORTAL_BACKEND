@@ -107,11 +107,19 @@ public class WebSocketSessionListener {
     }
 
     private ConversationParticipantResponse buildPresencePayload(User user, boolean online) {
+        String profileImage = null;
+        try {
+            if (user.getProfile() != null) {
+                profileImage = user.getProfile().getProfileImage();
+            }
+        } catch (Exception ignored) {
+            // defensive fallback if proxy is uninitialized
+        }
         SenderResponse sender = new SenderResponse(
             user.getId(),
             user.getName(),
             user.getEmail(),
-            user.getProfile() != null ? user.getProfile().getProfileImage() : null,
+            profileImage,
             user.getAccountType() != null ? user.getAccountType().name() : null
         );
         ConversationParticipantResponse presence = new ConversationParticipantResponse();

@@ -38,7 +38,11 @@ public interface ChatService {
     MessageResponse deleteMessage(Long conversationId, Long messageId, String currentUserEmail)
         throws JobPortalException;
 
-    /** Internal: save a new message entity (called by WebSocket controller). */
+    /** Send a new message, updating lastMessageAt, notifying offline participants, and returning MessageResponse. */
+    MessageResponse sendMessage(Long conversationId, String content, String senderEmail)
+        throws JobPortalException;
+
+    /** Internal: save a new message entity. */
     Message saveMessage(Long conversationId, String content, String senderEmail)
         throws JobPortalException;
 

@@ -35,6 +35,10 @@ import com.jobportal.repository.JobApplicationRepository;
 import com.jobportal.repository.RecruiterRepository;
 import com.jobportal.repository.UserRepository;
 
+import com.jobportal.domain.NotificationPriority;
+import com.jobportal.domain.NotificationType;
+import com.jobportal.service.NotificationService;
+
 @Service
 @Transactional
 public class ChatServiceImpl implements ChatService {
@@ -49,6 +53,7 @@ public class ChatServiceImpl implements ChatService {
     private final RecruiterRepository recruiterRepository;
     private final ChatMapper chatMapper;
     private final ApplicationEventPublisher eventPublisher;
+    private final NotificationService notificationService;
 
     public ChatServiceImpl(
             ConversationRepository conversationRepository,
@@ -58,7 +63,8 @@ public class ChatServiceImpl implements ChatService {
             JobApplicationRepository jobApplicationRepository,
             RecruiterRepository recruiterRepository,
             ChatMapper chatMapper,
-            ApplicationEventPublisher eventPublisher) {
+            ApplicationEventPublisher eventPublisher,
+            NotificationService notificationService) {
         this.conversationRepository = conversationRepository;
         this.participantRepository  = participantRepository;
         this.messageRepository      = messageRepository;
@@ -67,6 +73,7 @@ public class ChatServiceImpl implements ChatService {
         this.recruiterRepository    = recruiterRepository;
         this.chatMapper             = chatMapper;
         this.eventPublisher         = eventPublisher;
+        this.notificationService    = notificationService;
     }
 
     // ── Create / Get Conversation ────────────────────────────────────────
@@ -239,6 +246,46 @@ public class ChatServiceImpl implements ChatService {
                 "You do not have access to conversation: " + conversationId));
     }
 
+    @Override
+    public MessageResponse sendMessage(Long conversationId, String content, String senderEmail)
+            throws JobPortalException {
+        Message saved = saveMessage(conversationId, content, senderEmail);
+        notifyOfflineParticipants(saved, conversationId, senderEmail);
+        return chatMapper.toMessageResponse(saved);
+    }
+
+    private void notifyOfflineParticipants(Message message, Long convId, String senderEmail) {
+        try {
+            participantRepository.findAllByConversationId(convId).stream()
+                .filter(cp -> !cp.getUser().getEmail().equalsIgnoreCase(senderEmail))
+                .filter(cp -> !cp.isOnline())
+                .forEach(cp -> {
+                    User recipient = cp.getUser();
+                    User sender = message.getSender();
+                    notificationService.send(
+                        recipient,
+                        NotificationType.MESSAGE_RECEIVED,
+                        NotificationPriority.HIGH,
+                        "New message from " + sender.getName(),
+                        truncate(message.getContent(), 100),
+                        "/messages/" + convId,
+                        message.getId(),
+                        "MESSAGE"
+                    );
+                    log.debug("MESSAGE_RECEIVED notification sent to [{}] for conv [{}]",
+                        recipient.getEmail(), convId);
+                });
+        } catch (Exception ex) {
+            log.error("Failed to send message notifications for conv [{}]: {}",
+                convId, ex.getMessage(), ex);
+        }
+    }
+
+    private String truncate(String text, int maxLen) {
+        if (text == null) return "";
+        return text.length() <= maxLen ? text : text.substring(0, maxLen - 3) + "...";
+    }
+
     private void validateNotSuspended(User user) throws JobPortalException {
         if (user != null && user.getAccountType() == AccountType.EMPLOYER) {
             recruiterRepository.findByUser(user).ifPresent(recruiter -> {
@@ -250,8 +297,9 @@ public class ChatServiceImpl implements ChatService {
     }
 
     private User findUserByEmail(String email) throws JobPortalException {
-        return userRepository.findByEmail(email)
-                .orElseThrow(() -> JobPortalException.notFound("User not found: " + email));
+        return userRepository.findByEmailWithProfile(email)
+                .orElseGet(() -> userRepository.findByEmail(email)
+                        .orElseThrow(() -> JobPortalException.notFound("User not found: " + email)));
     }
 
     private String buildTitle(CreateConversationRequest req, User me, User other) {

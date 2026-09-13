@@ -15,11 +15,16 @@ import org.springframework.web.multipart.MultipartException;
 
 import jakarta.validation.ConstraintViolationException;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 /**
  * Global exception handler — returns correct HTTP status codes for every exception type.
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
 
     @ExceptionHandler(JobPortalException.class)
@@ -152,6 +157,7 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGenericException(Exception ex) {
+        log.error("Unhandled exception: {}", ex.getMessage(), ex);
         ErrorResponse error = new ErrorResponse(
                 "An unexpected error occurred. Please try again.",
                 HttpStatus.INTERNAL_SERVER_ERROR.value(),

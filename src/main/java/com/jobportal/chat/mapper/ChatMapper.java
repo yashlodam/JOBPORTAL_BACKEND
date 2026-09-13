@@ -40,12 +40,20 @@ public class ChatMapper {
 
     public SenderResponse toSenderResponse(User user) {
         if (user == null) return null;
-        Profile profile = user.getProfile();
+        String profileImage = null;
+        try {
+            Profile profile = user.getProfile();
+            if (profile != null) {
+                profileImage = profile.getProfileImage();
+            }
+        } catch (Exception ignored) {
+            // In case lazy proxy is accessed outside active Hibernate session
+        }
         return new SenderResponse(
             user.getId(),
             user.getName(),
             user.getEmail(),
-            profile != null ? profile.getProfileImage() : null,
+            profileImage,
             user.getAccountType() != null ? user.getAccountType().name() : null
         );
     }
