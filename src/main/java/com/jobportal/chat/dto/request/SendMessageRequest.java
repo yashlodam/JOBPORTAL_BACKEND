@@ -14,7 +14,6 @@ import jakarta.validation.constraints.Size;
  */
 public class SendMessageRequest {
 
-    @NotNull(message = "conversationId is required")
     private Long conversationId;
 
     @NotBlank(message = "Message content cannot be blank")

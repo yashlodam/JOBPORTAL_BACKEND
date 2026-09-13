@@ -118,7 +118,11 @@ public class ChatWebSocketController {
             return;
         }
 
-        Long convId = request.getConversationId();
+        Long convId = request != null ? request.getConversationId() : null;
+        if (convId == null) {
+            log.warn("sendMessage rejected: missing conversationId for sender={}", senderEmail);
+            return;
+        }
 
         // Validate, save, notify offline participants, and map to response
         MessageResponse response = chatService.sendMessage(convId, request.getContent(), senderEmail);
